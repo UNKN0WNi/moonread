@@ -17,6 +17,10 @@ pub fn binary_entry(String, Int32) -> DecodedEntry
 
 pub fn entries_to_archive(String, Array[DecodedEntry], Int32) -> Result[ZipReport, String]
 
+pub fn open_archive_from_bytes(String, Bytes, Int32) -> Result[ZipReport, String]
+
+pub fn open_epub_bytes(String, Bytes, Int32) -> Result[ZipReport, String]
+
 pub fn text_entry(String, String) -> DecodedEntry
 
 // Errors

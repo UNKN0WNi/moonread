@@ -22,14 +22,14 @@
 | L3 渲染层 | 🟡 抽象就绪 | `Backend::Null` 可用；`Backend::Crater` 是外部依赖占位 |
 | L4 阅读语义 | ✅ 已实现 | `src/paginate`、`src/paginator`、`src/toc`、`src/bookmark`、`src/rules`、`src/config` |
 | L4 门面 | ✅ 已实现 | `src/core`，不依赖任何 UI 框架，可整体编成 wasm 嵌入宿主 |
-| ZIP 解压 | 🟡 接入点就绪 | `src/zipio` 零依赖可用；真实 `fzip` 调用示例见 `fzip_adapter.mbt.example` |
-| L5 应用壳 | ⬜ 未提供 | 仓库只提供 `apps/embed-demo` 示例，不含 Web / 桌面 / 服务端壳 |
+| ZIP 解压 | ✅ 已接入 | `src/zipio` 通过 `hustcer/fzip` 真实解压 `.epub` / `.cbz`，四端可编译 |
+| L5 应用壳 | 🟡 最小 CLI | `apps/epub-cli` 可从磁盘打开真实 EPUB；不含 Web / 桌面 / 服务端壳 |
 
 已验证：
 
 - `moon fmt --check`：通过
 - `moon check --deny-warn`：native / js / wasm / wasm-gc 四端通过，零警告
-- `moon test`：四端各 98 项，全部通过
+- `moon test`：四端各 101 项，全部通过
 - `scripts/cross_target.sh`：native / js / wasm-gc 输出统一换行后完全一致
 - `tools/validate_json.py`：schema、字段表、示例配置对账通过
 - `tools/corpus_check.py`：15 本自建最小 EPUB 语料清单自检通过
@@ -80,6 +80,20 @@ moon run apps/embed-demo
 示例会在内存里构造一本 EPUB，然后演示：打开归档 → 解析 OPF / 目录 → 分页 →
 检查不变式 → 保存 / 恢复进度 → 应用规则。
 
+### 5. 打开磁盘上的真实 EPUB
+
+```bash
+moon run --target native apps/epub-cli /path/to/book.epub
+```
+
+`apps/epub-cli` 是「fzip 已真正接入」的可执行证据：它从磁盘读取真实字节 →
+`src/zipio` 用 `hustcer/fzip` 解压 → `src/core` 打开 → 打印元数据、目录和逐章分页。
+已在《工作、消费主义和新穷人》的真实 EPUB 上验证：20 个文本条目、`mimetype`
+首位、13 章、39 项目录，全部正确解析。
+
+> 只有 `apps/epub-cli` 依赖 `moonbitlang/x/fs`（native 读文件）。内核本身保持
+> 四端可编译、可嵌入 wasm。
+
 ---
 
 ## 它解决什么问题
@@ -104,7 +118,7 @@ wasm，保持小体积、零 UI 依赖，让宿主自己决定界面。
 ## 架构
 
 ```text
-L5 应用壳      apps/embed-demo（示例）；Web / 桌面 / 服务端壳由宿主提供
+L5 应用壳      apps/embed-demo（内存示例）· apps/epub-cli（真实 EPUB，native）；Web / 桌面壳由宿主提供
 L4 阅读语义    paginate · paginator · toc · bookmark · rules · config · core
 L3 渲染层      render（Backend::Null | Backend::Crater）
 L2 容器层      container · resource · epub · comic · zipio
@@ -146,8 +160,9 @@ moonread/
 │   ├── rules/         L4 JSON 规则引擎
 │   ├── config/        L4 JSON 配置
 │   ├── core/          L4 门面
-│   └── zipio/         ZIP 接入点（默认零依赖）
-├── apps/embed-demo/   可运行示例
+│   └── zipio/         ZIP 解压（hustcer/fzip）+ 归档归纳
+├── apps/embed-demo/   内存 EPUB 示例（四端）
+├── apps/epub-cli/     真实 EPUB 读取器（native，读磁盘文件）
 ├── tests/             fixtures · corpus · reference
 ├── tools/             validate_json.py · corpus_check.py · gen_fixtures.py
 ├── scripts/           ci.sh · cross_target.sh · toolchain-env.sh · ...

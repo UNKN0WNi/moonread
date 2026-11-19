@@ -2,4 +2,5 @@
 import {
   "moonread/moonread/src/container",
   "moonread/moonread/src/util",
+  "hustcer/fzip",
 }

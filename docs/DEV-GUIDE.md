@@ -56,15 +56,19 @@ import {
 pkgtype(kind: "executable")
 ```
 
-不要写 `package` 行；包名由目录决定。本地 workspace 依赖仍需写版本号，见
-`src/zipio/fzip_adapter.mbt.example`。
+不要写 `package` 行；包名由目录决定。第三方依赖在 `moon.mod` 的 `import {}` 里
+声明并带版本（用 `moon add hustcer/fzip@0.8.8` 添加），在包清单里写模块名，例如
+`src/zipio/moon.pkg` 的 `"hustcer/fzip"`。唯一调用 fzip 的地方是
+`src/zipio/fzip_adapter.mbt`。
 
 ## 4. 测试约定
 
 - 黑盒测试 `*_test.mbt` 必须用 `@pkg.fn` 限定调用；
 - `assert_true(..., msg=...)` 所在函数若可能失败，签名要写 `-> Unit raise`；
 - 测试不要依赖文件系统，EPUB 语料用 `src/epub/fixture.mbt` 在内存构造；
-- 四端测试数量应一致；当前为每端 98 项。
+- 四端测试数量应一致；当前为每端 101 项。
+- 真实 ZIP 解压由 `src/zipio/zipio_test.mbt` 覆盖（内存用 `fzip.zip_sync` 造 ZIP）；
+  直接打开磁盘文件的路径由 `apps/epub-cli` 手动验证。
 
 ## 5. 修改配置 / 规则
 

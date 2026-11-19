@@ -21,7 +21,7 @@ L4  paginate / paginator / toc / bookmark / rules / config / core
 | L2 | `resource` | 相对路径、URL 编码、base64 内嵌、远程资源策略 |
 | L2 | `epub` | container.xml → OPF → spine / manifest → nav / NCX → 章节 |
 | L2 | `comic` | CBZ 页面顺序、RTL、跨页、格式登记 |
-| L2 | `zipio` | ZIP 接入点；默认零依赖，`fzip` 以示例形式给出 |
+| L2 | `zipio` | ZIP 解压：`fzip_adapter.mbt` 是唯一 `@fzip` 调用点，`entries_to_archive` 保持可替换 |
 | L3 | `render` | `RenderBackend`：`Null` 与 `Crater` |
 | L4 | `paginate` | 分页算法与不丢内容 / 不越界 / 单调 / 幂等不变式 |
 | L4 | `paginator` | 页码、进度、定位 |
@@ -63,12 +63,12 @@ L4  paginate / paginator / toc / bookmark / rules / config / core
 | 能力 | 本仓库做法 | 原因 |
 |---|---|---|
 | XML | 自实现 `src/xml` | 主线零依赖可编译；只需 XML 1.0 良构子集 |
-| ZIP | `src/zipio` 默认零依赖，`fzip` 给适配示例 | 容器层可替换，避免把外部依赖写死 |
+| ZIP | `src/zipio` 用 `hustcer/fzip` 真实解压，调用收敛在 `fzip_adapter.mbt` | 换解压后端只改一个文件，`entries_to_archive` 不受影响 |
 | 渲染 | `Backend::Null` 可测，`Backend::Crater` 留占位 | crater 公共 API 尚未稳定，先固定度量接口 |
 
 ## 5. 当前限制
 
 - `Backend::Crater` 尚未接入真实 crater；
-- `zipio` 的默认实现不处理真实压缩流，真实 ZIP 需接入 `fzip`；
-- 仓库没有 Web / 桌面 / 服务端应用壳，只有 `apps/embed-demo`；
+- `apps/epub-cli` 依赖 `moonbitlang/x/fs` 读磁盘文件，因此只在 native 运行；内核本身四端可编译；
+- 仓库没有 Web / 桌面 / 服务端应用壳，只有 `apps/embed-demo` 与 native 的 `apps/epub-cli`；
 - 未提供 `moon prove` 的 SMT 求解器配置。

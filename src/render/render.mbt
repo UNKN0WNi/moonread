@@ -105,7 +105,7 @@ pub fn measure(
     Null => measure_null(req)
     Crater =>
       Err(
-        "crater 后端尚未接入本次构建：需要 `hustcer/fzip` 与 `mizchi/crater-renderer` 两个外部依赖（见 src/zipio/moon.pkg.json 与 scripts/fetch_deps.sh）。在此之前请使用 Backend::Null。",
+        "Crater 后端尚未接入：还需要 `mizchi/crater-renderer`（fzip 已接入，见 src/zipio/fzip_adapter.mbt）。在此之前请使用 Backend::Null。",
       )
   }
 }

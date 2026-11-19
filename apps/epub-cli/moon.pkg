@@ -1,0 +1,17 @@
+// 真实 EPUB 命令行读取器（native）。
+// 把本机 .epub 交给 fzip 解压，再交给 MoonRead 内核打开并输出结构报告。
+pkgtype(kind: "executable")
+
+import {
+  "moonread/moonread/src/zipio",
+  "moonread/moonread/src/container",
+  "moonread/moonread/src/core",
+  "moonread/moonread/src/epub",
+  "moonread/moonread/src/toc",
+  "moonread/moonread/src/paginate",
+  "moonread/moonread/src/config",
+  "moonread/moonread/src/rules",
+  "moonread/moonread/src/render",
+  "moonbitlang/x/fs",
+  "moonbitlang/core/env",
+}

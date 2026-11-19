@@ -17,7 +17,7 @@
 | DRM / 加密声明检测 | ✅ 仅检测并提示 | `src/epub/parse.mbt` |
 | 缺 nav / 缺 spine / 重复 id / 非法 XML 降级 | ✅ 告警不 panic | `src/epub/parse.mbt` |
 | CBZ 页面顺序 / RTL / 跨页 | ✅ 接口与数据 | `src/comic` |
-| 真实 ZIP 解压 | 🟡 接入点就绪 | `src/zipio`、`fzip_adapter.mbt.example` |
+| 真实 ZIP 解压（STORED / DEFLATE，含 mimetype 首位） | ✅ 已接入 | `src/zipio/fzip_adapter.mbt`（`hustcer/fzip`）；真实书经 `apps/epub-cli` 验证 |
 | OPF `collection` / 多文档 | ❌ 未实现 | — |
 | DRM 解密 | ❌ 非目标 | — |
 | RAR / 7z 解码 | ❌ 非目标 | — |

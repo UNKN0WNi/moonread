@@ -21,3 +21,8 @@ repository = "https://github.com/UNKN0WNi/moonread"
 options(
   "moonbit-dependencies": { },
 )
+
+import {
+  "hustcer/fzip@0.8.8",
+  "moonbitlang/x@0.5.7",
+}
