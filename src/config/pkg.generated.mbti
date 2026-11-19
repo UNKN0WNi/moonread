@@ -1,0 +1,94 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonread/moonread/src/config"
+
+import {
+  "moonbitlang/core/debug",
+  "moonread/moonread/src/jsonio",
+  "moonread/moonread/src/paginate",
+}
+
+// Values
+pub fn default_config() -> Config
+
+pub fn from_json(@jsonio.Json) -> Result[Config, String]
+
+pub fn from_json_text(String) -> Result[Config, String]
+
+pub fn is_hex_color(String) -> Bool
+
+pub fn known_field_paths() -> Array[String]
+
+pub fn line_height_px(Config) -> Double
+
+pub fn load_with_overlay(String, String) -> Result[Config, String]
+
+pub fn merge_json(@jsonio.Json, @jsonio.Json) -> @jsonio.Json
+
+pub fn paragraph_spacing_px(Config) -> Double
+
+pub fn pt_to_px(Double) -> Double
+
+pub fn to_page_policy(Config) -> @paginate.PagePolicy
+
+// Errors
+
+// Types and methods
+#derive(Eq, @debug.Debug)
+pub(all) struct Behavior {
+  default_mode : String
+  scroll_line_height_ratio : Double
+  restore_position_on_open : Bool
+  prefetch_pages : Int32
+  animation : String
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct Config {
+  version : Int32
+  theme : Theme
+  typography : Typography
+  page : PageGeom
+  behavior : Behavior
+  storage : Storage
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct PageGeom {
+  width_mm : Double
+  height_mm : Double
+  margin_top_mm : Double
+  margin_bottom_mm : Double
+  margin_inner_mm : Double
+  margin_outer_mm : Double
+  column_gap_mm : Double
+  direction : String
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct Storage {
+  data_dir : String
+  progress_format : String
+  progress_every_pages : Int32
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct Theme {
+  mode : String
+  background : String
+  foreground : String
+  accent : String
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct Typography {
+  font_family : String
+  font_size_pt : Double
+  line_height : Double
+  paragraph_spacing_em : Double
+  justify : Bool
+  hyphenate : Bool
+}
+
+// Type aliases
+
+// Traits

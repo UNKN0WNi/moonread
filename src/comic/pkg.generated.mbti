@@ -1,0 +1,78 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonread/moonread/src/comic"
+
+import {
+  "moonbitlang/core/debug",
+  "moonread/moonread/src/container",
+}
+
+// Values
+pub fn advance(Int32, Int32, Int32) -> Result[Int32, String]
+
+pub fn default_spread_policy() -> SpreadPolicy
+
+pub fn handler_for(String) -> FormatHandler?
+
+pub fn handlers() -> Array[FormatHandler]
+
+pub fn open(@container.Archive) -> ComicBook
+
+pub fn page_at(ComicBook, Int32) -> ComicPage?
+
+pub fn page_count(ComicBook) -> Int32
+
+pub fn rtl_key_mapping(Bool) -> (String, String)
+
+pub fn spreads(ComicBook, SpreadPolicy) -> Array[Spread]
+
+// Errors
+
+// Types and methods
+#derive(Eq, @debug.Debug)
+pub(all) struct ComicBook {
+  key : String
+  pages : Array[ComicPage]
+  skipped : Array[String]
+  warnings : Array[String]
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct ComicPage {
+  path : String
+  index : Int32
+  width_hint : Double
+  height_hint : Double
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct FormatHandler {
+  extension : String
+  family : String
+  available : Bool
+  note : String
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct Spread {
+  index : Int32
+  pages : Array[Int32]
+  is_single_full : Bool
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct SpreadPolicy {
+  mode : ViewMode
+  rtl : Bool
+  wide_ratio_threshold : Double
+  cover_alone : Bool
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) enum ViewMode {
+  Single
+  Double
+}
+
+// Type aliases
+
+// Traits

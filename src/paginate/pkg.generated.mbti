@@ -1,0 +1,142 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonread/moonread/src/paginate"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn approx_eq(Double, Double) -> Bool
+
+pub fn atomic_block(String, BlockKind, Double) -> Block
+
+pub fn check_all_invariants(Array[Block], PagePolicy) -> Array[String]
+
+pub fn check_consistent(Block) -> String
+
+pub fn content_ending(PagePolicy) -> Double
+
+pub fn content_height(PagePolicy) -> Double
+
+pub fn content_indent(PagePolicy) -> Double
+
+pub fn content_width(PagePolicy) -> Double
+
+pub fn copy_blocks(Array[Block]) -> Array[Block]
+
+pub fn default_policy() -> PagePolicy
+
+pub fn floor_lines(Double, Double) -> Int32
+
+pub fn heading_block(String, Double) -> Block
+
+pub fn image_block(String, Double) -> Block
+
+pub fn invariant_idempotent(Array[Block], PagePolicy) -> Bool
+
+pub fn invariant_monotonic(Paginated) -> Bool
+
+pub fn invariant_no_content_loss(Array[Block], Paginated) -> Bool
+
+pub fn invariant_within_page_height(PagePolicy, Paginated) -> Bool
+
+pub fn mm_to_px(Double) -> Double
+
+pub fn page_count(Paginated) -> Int32
+
+pub fn page_footers(PagePolicy, Paginated, String) -> Array[String]
+
+pub fn page_headers(PagePolicy, Paginated, String) -> Array[String]
+
+pub fn paginate(Array[Block], PagePolicy) -> Paginated
+
+pub fn paginate_heights(Array[Double], Double) -> Array[Double]
+
+pub fn render_label(String, Int32, Int32, String) -> String
+
+pub fn sum_block_heights(Array[Block]) -> Double
+
+pub fn sum_block_heights_list(Array[Double]) -> Double
+
+pub fn sum_fragment_heights(Paginated) -> Double
+
+pub fn text_block(String, Int32, Double) -> Block
+
+pub fn with_break_after(Block) -> Block
+
+pub fn with_break_before(Block) -> Block
+
+pub fn with_chapter_start(Block) -> Block
+
+// Errors
+
+// Types and methods
+#derive(Eq, @debug.Debug)
+pub(all) struct Block {
+  id : String
+  kind : BlockKind
+  height : Double
+  line_height : Double
+  lines : Int32
+  splittable : Bool
+  break_before : Bool
+  break_after : Bool
+  chapter_start : Bool
+  keep_with_next : Bool
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) enum BlockKind {
+  BKText
+  BKHeading
+  BKImage
+  BKFigure
+  BKList
+  BKTable
+  BKOther
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct Page {
+  index : Int32
+  fragments : Array[PlacedFragment]
+  used : Double
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct PagePolicy {
+  page_width : Double
+  page_height : Double
+  margin_top : Double
+  margin_bottom : Double
+  margin_inner : Double
+  margin_outer : Double
+  column_gap : Double
+  header_template : String
+  footer_template : String
+  orphan_min : Int32
+  widow_min : Int32
+  break_after_chapter_start : Bool
+  honor_rtl : Bool
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct Paginated {
+  pages : Array[Page]
+  error : String
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct PlacedFragment {
+  block_id : String
+  kind : BlockKind
+  y : Double
+  height : Double
+  continues : Bool
+  is_continuation : Bool
+  seq : Int32
+}
+
+// Type aliases
+
+// Traits

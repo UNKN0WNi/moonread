@@ -1,0 +1,89 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonread/moonread/src/core"
+
+import {
+  "moonbitlang/core/debug",
+  "moonread/moonread/src/config",
+  "moonread/moonread/src/container",
+  "moonread/moonread/src/epub",
+  "moonread/moonread/src/paginate",
+  "moonread/moonread/src/paginator",
+  "moonread/moonread/src/render",
+  "moonread/moonread/src/rules",
+  "moonread/moonread/src/toc",
+  "moonread/moonread/src/xml",
+}
+
+// Values
+pub fn block_ids_on_page(ChapterPages, Int32) -> Array[String]
+
+pub fn book_key(Book) -> String
+
+pub fn chapter_count(Book) -> Int32
+
+pub fn chapter_title(Book, Int32) -> String
+
+pub fn chapters(Book) -> Array[String]
+
+pub fn current_page(Reader, ChapterPages) -> Result[@paginate.Page, String]
+
+pub fn goto_chapter(Reader, Int32) -> Result[Reader, String]
+
+pub fn kernel_info() -> String
+
+pub fn new_reader(Book) -> Reader
+
+pub fn next_page(Reader) -> Result[Reader, String]
+
+pub fn open_book(@container.Archive, @config.Config, @rules.RuleSet, @render.Backend) -> Result[Book, String]
+
+pub fn pages_in_chapter(Reader, Int32) -> Result[Int32, String]
+
+pub fn prev_page(Reader) -> Result[Reader, String]
+
+pub fn progress_of(Reader, ChapterPages, String) -> @paginator.Progress
+
+pub fn reader_chapter_count(Reader) -> Int32
+
+pub fn render_chapter(Book, Int32) -> Result[ChapterPages, String]
+
+pub fn restore_reader(Reader, @paginator.Progress) -> @paginator.Restore
+
+pub fn step(Reader, Int32) -> Result[Reader, String]
+
+// Errors
+
+// Types and methods
+#derive(Eq, @debug.Debug)
+pub(all) struct Book {
+  epub : @epub.EpubBook
+  toc : @toc.Toc
+  config : @config.Config
+  rules : @rules.RuleSet
+  backend : @render.Backend
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct ChapterPages {
+  chapter_index : Int32
+  chapter_path : String
+  title : String
+  doc : @xml.Element
+  blocks : Array[@paginate.Block]
+  paginated : @paginate.Paginated
+  headers : Array[String]
+  footers : Array[String]
+  effects : @rules.RuleEffects
+  warnings : Array[String]
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct Reader {
+  book : Book
+  chapter : Int32
+  page : Int32
+}
+
+// Type aliases
+
+// Traits

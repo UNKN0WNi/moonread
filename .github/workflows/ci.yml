@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  TOOLCHAIN_ENV_QUIET: "1"
+
+jobs:
+  quality:
+    name: format / check / json / corpus
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MoonBit
+        uses: ./.github/actions/setup-moonbit
+
+      - name: moon fmt --check
+        run: moon fmt --check
+
+      - name: moon check (warnings are errors)
+        run: moon check --deny-warn
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python validation dependencies
+        run: python -m pip install --quiet jsonschema
+
+      - name: Strict JSON self-check
+        run: python tools/validate_json.py
+
+      - name: Fixture manifest self-check
+        run: python tools/corpus_check.py --require-manifest --skip-missing-books
+
+  test:
+    name: test / ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [native, js, wasm, wasm-gc]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MoonBit
+        uses: ./.github/actions/setup-moonbit
+        with:
+          native: ${{ matrix.target == 'native' && 'true' || 'false' }}
+
+      - name: moon check
+        run: moon check --target ${{ matrix.target }} --deny-warn
+
+      - name: moon test
+        run: moon test --target ${{ matrix.target }}
+
+      - name: moon build
+        run: moon build --target ${{ matrix.target }}
+
+  consistency:
+    name: cross-backend consistency
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MoonBit
+        uses: ./.github/actions/setup-moonbit
+        with:
+          native: "true"
+
+      - name: native / js / wasm-gc output consistency
+        run: bash scripts/cross_target.sh

@@ -1,0 +1,74 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonread/moonread/src/xml"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn attr_ci(Element, String) -> String?
+
+pub fn attr_or_empty(Element, String) -> String
+
+pub fn child_elements(Element) -> Array[Element]
+
+pub fn child_text(Element) -> String
+
+pub fn count_elements(Element) -> Int32
+
+pub fn decode_entities(String, ParseOptions) -> Result[String, String]
+
+pub fn descendants(Element) -> Array[Element]
+
+pub fn find_all_child(Element, String) -> Array[Element]
+
+pub fn find_by_id(Element, String) -> Element?
+
+pub fn find_child(Element, String) -> Element?
+
+pub fn find_descendant(Element, String) -> Element?
+
+pub fn get_attr(Element, String) -> String?
+
+pub fn lenient_options() -> ParseOptions
+
+pub fn local_name(String) -> String
+
+pub fn parse_document(String) -> Result[Element, String]
+
+pub fn parse_document_lenient(String) -> Result[Element, String]
+
+pub fn parse_document_with(String, ParseOptions) -> Result[Element, String]
+
+pub fn parse_fragment(String, ParseOptions) -> Result[Element, String]
+
+pub fn strict_options() -> ParseOptions
+
+pub fn tag_is(Element, String) -> Bool
+
+pub fn text_content(Element) -> String
+
+// Errors
+
+// Types and methods
+#derive(Eq, @debug.Debug)
+pub(all) struct Element {
+  tag : String
+  attrs : Array[(String, String)]
+  children : Array[Node]
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) enum Node {
+  EElement(Element)
+  EText(String)
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct ParseOptions {
+  lenient : Bool
+}
+
+// Type aliases
+
+// Traits

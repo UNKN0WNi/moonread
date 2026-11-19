@@ -1,0 +1,54 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonread/moonread/src/bookmark"
+
+import {
+  "moonbitlang/core/debug",
+  "moonread/moonread/src/paginator",
+}
+
+// Values
+pub fn add(Store, String, String, @paginator.Locator, String) -> Int32
+
+pub fn count(Store) -> Int32
+
+pub fn find(Store, Int32) -> Bookmark?
+
+pub fn from_json_text(String) -> Result[Store, String]
+
+pub fn in_chapter(Store, Int32) -> Array[Bookmark]
+
+pub fn load_progress(String) -> Result[@paginator.Progress, String]
+
+pub fn new_store(String) -> Store
+
+pub fn next_id(Store) -> Int32
+
+pub fn remove(Store, Int32) -> (Store, Bool)
+
+pub fn save_progress(@paginator.Progress) -> String
+
+pub fn to_json_text(Store) -> String
+
+pub fn update_label(Store, Int32, String) -> Bool
+
+// Errors
+
+// Types and methods
+#derive(Eq, @debug.Debug)
+pub(all) struct Bookmark {
+  id : Int32
+  label : String
+  note : String
+  locator : @paginator.Locator
+  created : String
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct Store {
+  book_key : String
+  items : Array[Bookmark]
+}
+
+// Type aliases
+
+// Traits

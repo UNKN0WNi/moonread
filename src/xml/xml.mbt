@@ -1,0 +1,832 @@
+///|
+/// XML 子集解析（OPF / container.xml / NCX / XHTML 章节通用）。
+///
+/// 首选 `moonbit-community/XMLParser`。本包是**同接口的本地实现**，
+/// 理由写在 `docs/ARCHITECTURE.md` 的「依赖取舍」：
+/// 1. 预研沙箱无法联网取包，主线代码必须能在零外部依赖下编译并跑测试；
+/// 2. EPUB 只需要 XML 1.0 的一个良构子集（无 DTD 实体、无外部实体、无命名空间解析）；
+/// 3. 接口做成 `Element`/`Node` 树 + 纯函数访问器，换实现时只需要替换本包。
+///
+/// 明确**不支持**（且都以清晰错误返回，不 panic，验收项）：
+/// - DTD 内部子集声明的自定义实体；
+/// - 外部实体与网络实体解析（EPUB 安全要求，禁止 XXE）；
+/// - 命名空间 URI 归一化（保留 `opf:`、`xmlns:epub` 这类前缀原样，
+///   由上层用 `local_name` / 大小写无关比较处理）。
+///
+/// `lenient` 模式（已知风险「真实 EPUB 语料比预期脏」的缓解）：
+/// - 未识别的命名实体按字面保留；
+/// - HTML 空元素（`br`/`img`/`meta` …）允许不写自闭合斜杠；
+/// - 结束标签大小写与开始标签不一致时按 ASCII 大小写无关匹配。
+#derive(Debug, Eq)
+pub(all) struct Element {
+  tag : String
+  attrs : Array[(String, String)]
+  children : Array[Node]
+}
+
+///|
+#derive(Debug, Eq)
+pub(all) enum Node {
+  EElement(Element)
+  EText(String)
+}
+
+///|
+#derive(Debug, Eq)
+pub(all) struct ParseOptions {
+  lenient : Bool
+}
+
+///|
+pub fn strict_options() -> ParseOptions {
+  ParseOptions::{ lenient: false, }
+}
+
+///|
+pub fn lenient_options() -> ParseOptions {
+  ParseOptions::{ lenient: true, }
+}
+
+///|
+priv struct XP {
+  src : Array[Char]
+  mut pos : Int32
+  mut depth : Int32
+  opts : ParseOptions
+}
+
+///|
+/// 解析整篇文档：允许 `<?xml?>`、注释、`<!DOCTYPE ...>` 前言，要求恰好一个根元素。
+pub fn parse_document(text : String) -> Result[Element, String] {
+  parse_document_with(text, strict_options())
+}
+
+///|
+/// 语料解析推荐入口：脏 EPUB 用 lenient，仍失败再降级（出口条件「不 panic」）。
+pub fn parse_document_lenient(text : String) -> Result[Element, String] {
+  parse_document_with(text, lenient_options())
+}
+
+///|
+pub fn parse_document_with(
+  text : String,
+  opts : ParseOptions,
+) -> Result[Element, String] {
+  let p = XP::{ src: @util.to_chars(text), pos: 0, depth: 0, opts, }
+  skip_prolog(p)
+  if p.pos >= p.src.length() {
+    return Err("文档为空或只有前言")
+  }
+  let root = match parse_element(p) {
+    Ok(__try_v_1) => __try_v_1
+    Err(__try_e_1) => return Err(__try_e_1)
+  }
+  skip_prolog(p)
+  if p.pos != p.src.length() {
+    return Err(
+      "第 " +
+      p.pos.to_string() +
+      " 个字符处：根元素之后存在多余内容 '" +
+      @util.char_to_string(p.src[p.pos]) +
+      "'",
+    )
+  }
+  Ok(root)
+}
+
+///|
+/// 解析一个外部解析片段（章节正文常见做法：只有一段 body 内容）。
+pub fn parse_fragment(
+  text : String,
+  opts : ParseOptions,
+) -> Result[Element, String] {
+  parse_document_with(
+    "<moonread-fragment>" + text + "</moonread-fragment>",
+    opts,
+  )
+}
+
+///|
+fn cur(p : XP) -> Char? {
+  at(p, p.pos)
+}
+
+///|
+fn at(p : XP, i : Int32) -> Char? {
+  if i >= 0 && i < p.src.length() {
+    Some(p.src[i])
+  } else {
+    None
+  }
+}
+
+///|
+fn err_at(p : XP, msg : String) -> Result[Element, String] {
+  Err("第 " + p.pos.to_string() + " 个字符处：" + msg)
+}
+
+///|
+fn err_at_str(p : XP, msg : String) -> Result[String, String] {
+  Err("第 " + p.pos.to_string() + " 个字符处：" + msg)
+}
+
+///|
+fn starts_here(p : XP, lit : String) -> Bool {
+  @util.matches_at(p.src, p.pos, @util.to_chars(lit))
+}
+
+///|
+fn skip_ws(p : XP) -> Unit {
+  let n = p.src.length()
+  let mut i = p.pos
+  while i < n && @util.is_xml_space(p.src[i]) {
+    i = i + 1
+  }
+  p.pos = i
+}
+
+///|
+/// 跳过前言：空白、`<?...?>`、`<!--...-->`、`<!DOCTYPE ...>`（含内部子集）。
+fn skip_prolog(p : XP) -> Unit {
+  let n = p.src.length()
+  let mut keep = true
+  while keep && p.pos < n {
+    skip_ws(p)
+    if starts_here(p, "<!--") {
+      match skip_until(p, "-->") {
+        Ok(_) => ()
+        Err(_) => keep = false
+      }
+    } else if starts_here(p, "<?") {
+      match skip_until(p, "?>") {
+        Ok(_) => ()
+        Err(_) => keep = false
+      }
+    } else if starts_here(p, "<!") {
+      match skip_doctype(p) {
+        Ok(_) => ()
+        Err(_) => keep = false
+      }
+    } else {
+      keep = false
+    }
+  }
+}
+
+///|
+fn skip_until(p : XP, term : String) -> Result[Unit, String] {
+  let pat = @util.to_chars(term)
+  let n = p.src.length()
+  // 调用方已确认位于起始标记处；从标记内第二个字符开始找终止串，
+  // 这样 `<!--`、`<?`、`<!` 三种起始长度都无需区分。
+  let mut i = p.pos + 1
+  while i + pat.length() <= n {
+    if @util.matches_at(p.src, i, pat) {
+      p.pos = i + pat.length()
+      return Ok(())
+    }
+    i = i + 1
+  }
+  Err(
+    "第 " +
+    p.pos.to_string() +
+    " 个字符处：未找到终止标记 '" +
+    term +
+    "'",
+  )
+}
+
+///|
+/// `<!DOCTYPE ...>`：需要处理内部子集 `[ ... ]`，其中可能出现 `>`。
+fn skip_doctype(p : XP) -> Result[Unit, String] {
+  let n = p.src.length()
+  let mut i = p.pos + 2
+  let mut in_subset = false
+  while i < n {
+    let c = p.src[i]
+    if c == '[' {
+      in_subset = true
+    } else if c == ']' {
+      in_subset = false
+    } else if c == '>' && !in_subset {
+      p.pos = i + 1
+      return Ok(())
+    }
+    i = i + 1
+  }
+  Err("第 " + p.pos.to_string() + " 个字符处：DOCTYPE 未闭合")
+}
+
+///|
+fn read_name(p : XP) -> Result[String, String] {
+  skip_ws(p)
+  let n = p.src.length()
+  let start = p.pos
+  if p.pos < n &&
+    (p.src[p.pos] == '<' || p.src[p.pos] == '>' || p.src[p.pos] == '/') {
+    return Err(
+      "第 " +
+      start.to_string() +
+      " 个字符处：期望名称，实际是标记字符",
+    )
+  }
+  while p.pos < n && is_name_char(p.src[p.pos]) {
+    p.pos = p.pos + 1
+  }
+  if p.pos == start {
+    return Err(
+      "第 " +
+      start.to_string() +
+      " 个字符处：期望名称，实际是 '" +
+      (match at(p, start) {
+        Some(c) => @util.char_to_string(c)
+        None => "<结束>"
+      }) +
+      "'",
+    )
+  }
+  Ok(@util.from_chars(@util.slice_chars(p.src, start, p.pos)))
+}
+
+///|
+fn is_name_char(c : Char) -> Bool {
+  if c >= 'a' && c <= 'z' {
+    true
+  } else if c >= 'A' && c <= 'Z' {
+    true
+  } else if c >= '0' && c <= '9' {
+    true
+  } else if c == '-' || c == '_' || c == ':' || c == '.' {
+    true
+  } else {
+    @util.char_to_int(c) > 0x7f
+  }
+}
+
+///|
+fn parse_element(p : XP) -> Result[Element, String] {
+  if p.depth > 96 {
+    return err_at(p, "元素嵌套超过 96 层，疑似构造输入")
+  }
+  if cur(p) != Some('<') {
+    return err_at(p, "期望 '<' 开始标签")
+  }
+  p.pos = p.pos + 1
+  let tag = match read_name(p) {
+    Ok(__try_v_2) => __try_v_2
+    Err(__try_e_2) => return Err(__try_e_2)
+  }
+  let attrs : Array[(String, String)] = []
+  let mut self_closed = false
+  let mut done = false
+  while !done {
+    skip_ws(p)
+    match cur(p) {
+      None => return err_at(p, "标签 '" + tag + "' 未闭合")
+      Some('/') => {
+        p.pos = p.pos + 1
+        if cur(p) != Some('>') {
+          return err_at(p, "'/' 之后期望 '>'")
+        }
+        p.pos = p.pos + 1
+        self_closed = true
+        done = true
+      }
+      Some('>') => {
+        p.pos = p.pos + 1
+        done = true
+      }
+      _ => {
+        let name = match read_name(p) {
+          Ok(__try_v_3) => __try_v_3
+          Err(__try_e_3) => return Err(__try_e_3)
+        }
+        skip_ws(p)
+        if cur(p) != Some('=') {
+          if p.opts.lenient {
+            // XHTML 里允许 `<input checked>` 这类无值属性，按空值处理
+            attrs.push((name, name))
+          } else {
+            return err_at(p, "属性 '" + name + "' 之后期望 '='")
+          }
+        } else {
+          p.pos = p.pos + 1
+          skip_ws(p)
+          let raw = match read_attr_value(p) {
+            Ok(__try_v_4) => __try_v_4
+            Err(__try_e_4) => return Err(__try_e_4)
+          }
+          attrs.push(
+            (
+              name,
+              match decode_entities(raw, p.opts) {
+                Ok(__try_v_5) => __try_v_5
+                Err(__try_e_5) => return Err(__try_e_5)
+              },
+            ),
+          )
+        }
+      }
+    }
+  }
+  if self_closed {
+    return Ok(Element::{ tag, attrs, children: [], })
+  }
+  if is_void_tag(tag, p.opts) {
+    // XHTML 允许 `<meta/>`，但 EPUB 里也常见 `<meta>...</meta>`；
+    // 宽松模式遇到显式结束标签时要吃掉它，不能留给父元素当成错配。
+    let saved = p.pos
+    skip_ws(p)
+    let closing = "</" + tag + ">"
+    if starts_here(p, closing) {
+      p.pos = p.pos + closing.length()
+    } else {
+      p.pos = saved
+    }
+    return Ok(Element::{ tag, attrs, children: [], })
+  }
+  p.depth = p.depth + 1
+  let children : Array[Node] = []
+  let closed = parse_children(p, tag, children)
+  p.depth = p.depth - 1
+  match closed {
+    Err(e) => return Err(e)
+    Ok(_) => Ok(Element::{ tag, attrs, children, })
+  }
+}
+
+///|
+fn is_void_tag(tag : String, opts : ParseOptions) -> Bool {
+  if !opts.lenient {
+    return false
+  }
+  let t = @util.ascii_lower(tag)
+  t == "area" ||
+  t == "base" ||
+  t == "br" ||
+  t == "col" ||
+  t == "embed" ||
+  t == "hr" ||
+  t == "img" ||
+  t == "input" ||
+  t == "link" ||
+  t == "param" ||
+  t == "source" ||
+  t == "track" ||
+  t == "wbr"
+}
+
+///|
+fn parse_children(
+  p : XP,
+  open_tag : String,
+  out : Array[Node],
+) -> Result[Unit, String] {
+  let n = p.src.length()
+  while true {
+    if p.pos >= n {
+      return Err(
+        "第 " +
+        p.pos.to_string() +
+        " 个字符处：元素 '" +
+        open_tag +
+        "' 缺少结束标签",
+      )
+    }
+    if cur(p) == Some('<') {
+      if starts_here(p, "</") {
+        p.pos = p.pos + 2
+        let close = match read_name(p) {
+          Ok(__try_v_6) => __try_v_6
+          Err(__try_e_6) => return Err(__try_e_6)
+        }
+        skip_ws(p)
+        if cur(p) != Some('>') {
+          return Err(
+            "第 " +
+            p.pos.to_string() +
+            " 个字符处：结束标签 '" +
+            close +
+            "' 未闭合",
+          )
+        }
+        p.pos = p.pos + 1
+        if close == open_tag {
+          return Ok(())
+        }
+        if p.opts.lenient &&
+          @util.ascii_lower(close) == @util.ascii_lower(open_tag) {
+          return Ok(())
+        }
+        return Err(
+          "第 " +
+          p.pos.to_string() +
+          " 个字符处：结束标签 '" +
+          close +
+          "' 与当前元素 '" +
+          open_tag +
+          "' 不匹配",
+        )
+      } else if starts_here(p, "<!--") {
+        // 注释不进入树：真实语料里注释常包裹被弃用的排版片段
+        match skip_until(p, "-->") {
+          Err(e) => return Err(e)
+          Ok(_) => ()
+        }
+      } else if starts_here(p, "<![CDATA[") {
+        p.pos = p.pos + 9
+        let buf : Array[Char] = []
+        let mut found = false
+        while p.pos < n {
+          if @util.matches_at(p.src, p.pos, @util.to_chars("]]>")) {
+            p.pos = p.pos + 3
+            found = true
+            break
+          }
+          buf.push(p.src[p.pos])
+          p.pos = p.pos + 1
+        }
+        if !found {
+          return Err(
+            "第 " + p.pos.to_string() + " 个字符处：CDATA 未闭合",
+          )
+        }
+        out.push(EText(@util.from_chars(buf)))
+      } else if starts_here(p, "<?") {
+        match skip_until(p, "?>") {
+          Err(e) => return Err(e)
+          Ok(_) => ()
+        }
+      } else {
+        let child = match parse_element(p) {
+          Ok(__try_v_7) => __try_v_7
+          Err(__try_e_7) => return Err(__try_e_7)
+        }
+        out.push(EElement(child))
+      }
+    } else {
+      let start = p.pos
+      while p.pos < n && p.src[p.pos] != '<' {
+        p.pos = p.pos + 1
+      }
+      let raw = @util.from_chars(@util.slice_chars(p.src, start, p.pos))
+      let decoded = match decode_entities(raw, p.opts) {
+        Ok(__try_v_8) => __try_v_8
+        Err(__try_e_8) => return Err(__try_e_8)
+      }
+      if decoded.length() > 0 {
+        out.push(EText(decoded))
+      }
+    }
+  }
+  Err("不可达")
+}
+
+///|
+fn read_attr_value(p : XP) -> Result[String, String] {
+  match cur(p) {
+    Some('"') => {
+      p.pos = p.pos + 1
+      read_quoted(p, '"')
+    }
+    Some('\'') => {
+      p.pos = p.pos + 1
+      read_quoted(p, '\'')
+    }
+    _ => err_at_str(p, "属性值必须用单引号或双引号包裹")
+  }
+}
+
+///|
+fn read_quoted(p : XP, quote : Char) -> Result[String, String] {
+  let n = p.src.length()
+  let buf : Array[Char] = []
+  while p.pos < n {
+    let c = p.src[p.pos]
+    if c == quote {
+      p.pos = p.pos + 1
+      return Ok(@util.from_chars(buf))
+    }
+    if c == '<' {
+      return Err(
+        "第 " +
+        p.pos.to_string() +
+        " 个字符处：属性值内不得出现裸 '<'",
+      )
+    }
+    buf.push(c)
+    p.pos = p.pos + 1
+  }
+  Err("第 " + p.pos.to_string() + " 个字符处：属性值引号未闭合")
+}
+
+///| 实体引用解码。支持五个预定义实体与数字引用；未知命名实体在 lenient
+
+///|
+/// 模式下按字面保留，严格模式下报错。外部实体（`&xxx;` 由 DTD 定义）一律拒绝。
+pub fn decode_entities(
+  text : String,
+  opts : ParseOptions,
+) -> Result[String, String] {
+  let cs = @util.to_chars(text)
+  let out : Array[Char] = []
+  let n = cs.length()
+  let mut i = 0
+  while i < n {
+    if cs[i] != '&' {
+      out.push(cs[i])
+      i = i + 1
+    } else {
+      let mut j = i + 1
+      let buf : Array[Char] = []
+      let mut closed = false
+      while j < n && buf.length() < 32 {
+        if cs[j] == ';' {
+          closed = true
+          break
+        }
+        if cs[j] == '&' || @util.is_xml_space(cs[j]) || cs[j] == '<' {
+          break
+        }
+        buf.push(cs[j])
+        j = j + 1
+      }
+      if !closed {
+        if opts.lenient {
+          out.push('&')
+          i = i + 1
+        } else {
+          return Err(
+            "第 " + i.to_string() + " 个字符处：实体引用缺少 ';'",
+          )
+        }
+      } else {
+        let name = @util.from_chars(buf)
+        match resolve_entity(name, opts) {
+          Ok(Some(s)) =>
+            for ch in @util.to_chars(s) {
+              out.push(ch)
+            }
+          Ok(None) =>
+            if opts.lenient {
+              out.push('&')
+              for ch in buf {
+                out.push(ch)
+              }
+              out.push(';')
+            } else {
+              return Err(
+                "第 " +
+                i.to_string() +
+                " 个字符处：未声明的实体 '&" +
+                name +
+                ";'",
+              )
+            }
+          Err(e) => return Err(e)
+        }
+        i = j + 1
+      }
+    }
+  }
+  Ok(@util.from_chars(out))
+}
+
+///|
+fn resolve_entity(
+  name : String,
+  opts : ParseOptions,
+) -> Result[String?, String] {
+  let cs = @util.to_chars(name)
+  if cs.length() == 0 {
+    return Err("空实体引用 '&;'")
+  }
+  if cs[0] == '#' {
+    return Ok(
+      Some(
+        match decode_numeric(name) {
+          Ok(__try_v_10) => __try_v_10
+          Err(__try_e_10) => return Err(__try_e_10)
+        },
+      ),
+    )
+  }
+  if name == "lt" {
+    Ok(Some("<"))
+  } else if name == "gt" {
+    Ok(Some(">"))
+  } else if name == "amp" {
+    Ok(Some("&"))
+  } else if name == "quot" {
+    Ok(Some("\""))
+  } else if name == "apos" {
+    Ok(Some("'"))
+  } else if name == "nbsp" {
+    // 非 XML 预定义实体，但真实 EPUB 语料里出现率极高
+    if opts.lenient {
+      Ok(Some("\u{a0}"))
+    } else {
+      Ok(None)
+    }
+  } else {
+    Ok(None)
+  }
+}
+
+///|
+fn decode_numeric(name : String) -> Result[String, String] {
+  let cs = @util.to_chars(name)
+  let is_hex = cs.length() > 1 && cs[1] == 'x'
+  let digits = @util.from_chars(
+    @util.slice_chars(cs, if is_hex { 2 } else { 1 }, cs.length()),
+  )
+  if digits.length() == 0 {
+    return Err("数字实体缺少数字：&" + name + ";")
+  }
+  let mut cp = 0
+  if is_hex {
+    for c in digits {
+      match @util.hex_digit_value(c) {
+        Some(v) => cp = cp * 16 + v
+        None => return Err("数字实体含非法字符：&" + name + ";")
+      }
+    }
+  } else {
+    for c in digits {
+      match @util.digit_value(c) {
+        Some(v) => cp = cp * 10 + v
+        None => return Err("数字实体含非法字符：&" + name + ";")
+      }
+    }
+  }
+  match @util.codepoint_to_char(cp) {
+    Some(ch) => Ok(@util.char_to_string(ch))
+    None => Err("数字实体码位非法：" + cp.to_string())
+  }
+}
+
+// ---------------- 访问器 ----------------
+
+///|
+/// 去掉命名空间前缀，`opf:scheme` -> `scheme`。
+pub fn local_name(tag : String) -> String {
+  let parts = @util.split_char(tag, ':')
+  if parts.length() == 0 {
+    tag
+  } else {
+    parts[parts.length() - 1]
+  }
+}
+
+///|
+/// 标签名是否等于 `want`（忽略命名空间前缀与 ASCII 大小写）。
+pub fn tag_is(el : Element, want : String) -> Bool {
+  @util.ascii_lower(local_name(el.tag)) == @util.ascii_lower(want)
+}
+
+///|
+pub fn get_attr(el : Element, name : String) -> String? {
+  let mut found : String? = None
+  for kv in el.attrs {
+    if kv.0 == name {
+      found = Some(kv.1)
+      break
+    }
+  }
+  found
+}
+
+///|
+/// 大小写无关 + 前缀无关的属性查找。真实 OPF 里 `id`/`ID`、`href`/`HREF` 都出现过。
+
+///|
+/// 属性不存在时返回空串，供只关心「有或没有」的调用方使用。
+pub fn attr_or_empty(el : Element, name : String) -> String {
+  match attr_ci(el, name) {
+    Some(v) => v
+    None => ""
+  }
+}
+
+///|
+pub fn attr_ci(el : Element, name : String) -> String? {
+  let want = @util.ascii_lower(name)
+  let mut found : String? = None
+  for kv in el.attrs {
+    if @util.ascii_lower(local_name(kv.0)) == want {
+      found = Some(kv.1)
+      break
+    }
+  }
+  found
+}
+
+///|
+pub fn child_elements(el : Element) -> Array[Element] {
+  let out : Array[Element] = []
+  for c in el.children {
+    match c {
+      EElement(e) => out.push(e)
+      EText(_) => ()
+    }
+  }
+  out
+}
+
+///|
+pub fn child_text(el : Element) -> String {
+  let mut acc = ""
+  for c in el.children {
+    match c {
+      EText(t) => acc = acc + t
+      EElement(_) => ()
+    }
+  }
+  acc
+}
+
+///|
+/// 按文档顺序拼接全部后代文本。注意与 `child_text` 的区别：后者只取直接子文本。
+pub fn text_content(el : Element) -> String {
+  let mut acc = ""
+  for c in el.children {
+    match c {
+      EText(t) => acc = acc + t
+      EElement(e) => acc = acc + text_content(e)
+    }
+  }
+  acc
+}
+
+///|
+pub fn find_child(el : Element, tag : String) -> Element? {
+  let mut found : Element? = None
+  for c in child_elements(el) {
+    if tag_is(c, tag) {
+      found = Some(c)
+      break
+    }
+  }
+  found
+}
+
+///|
+pub fn find_all_child(el : Element, tag : String) -> Array[Element] {
+  let out : Array[Element] = []
+  for c in child_elements(el) {
+    if tag_is(c, tag) {
+      out.push(c)
+    }
+  }
+  out
+}
+
+///|
+/// 前序遍历收集所有后代元素（不含自身）。
+pub fn descendants(el : Element) -> Array[Element] {
+  let out : Array[Element] = []
+  collect_descendants(el, out)
+  out
+}
+
+///|
+fn collect_descendants(el : Element, out : Array[Element]) -> Unit {
+  for c in child_elements(el) {
+    out.push(c)
+    collect_descendants(c, out)
+  }
+}
+
+///|
+pub fn find_descendant(el : Element, tag : String) -> Element? {
+  let mut found : Element? = None
+  for d in descendants(el) {
+    if tag_is(d, tag) {
+      found = Some(d)
+      break
+    }
+  }
+  found
+}
+
+///|
+/// 按 `id` 属性在整棵树里找元素（EPUB 的 `spine idref`、nav 锚点都要用）。
+pub fn find_by_id(root : Element, id : String) -> Element? {
+  let mut found : Element? = None
+  if attr_ci(root, "id") == Some(id) {
+    return Some(root)
+  }
+  for d in descendants(root) {
+    if attr_ci(d, "id") == Some(id) {
+      found = Some(d)
+      break
+    }
+  }
+  found
+}
+
+///|
+/// 元素总数，供语料回归（manifest 断言）使用。
+pub fn count_elements(root : Element) -> Int32 {
+  1 + descendants(root).length()
+}

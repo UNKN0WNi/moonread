@@ -1,0 +1,102 @@
+{
+  "_comment": "MoonRead 规则集。规则按数组从上到下执行；id 只是给你自己看的标识，重复 id 会被拒绝。",
+  "_how_to_customize": "复制一条规则、改 id、selector 和 action 即可。想验证改动，运行 python3 tools/validate_json.py。",
+  "$schema": "https://moonread.dev/schema/rules.json",
+  "version": 1,
+  "rules": [
+    {
+      "_comment": "一条规则 = match（命中什么）+ action（做什么）。selector 支持常用 CSS 选择器；text_regex 可选，用于再按文字过滤。",
+      "id": "strip-ad-banner",
+      "match": {
+        "selector": "div.promo, aside.newsletter",
+        "text_regex": "subscribe|订阅|newsletter"
+      },
+      "action": {
+        "type": "remove"
+      }
+    },
+    {
+      "id": "force-dark-img",
+      "match": {
+        "selector": "img"
+      },
+      "action": {
+        "type": "set_style",
+        "style": {
+          "filter": "invert(1) hue-rotate(180deg)"
+        }
+      }
+    },
+    {
+      "id": "chapter-title-page",
+      "match": {
+        "selector": "body > h1:first-child"
+      },
+      "action": {
+        "type": "page_break_before"
+      }
+    },
+    {
+      "id": "custom-font",
+      "match": {
+        "selector": "p.verse"
+      },
+      "action": {
+        "type": "set_style",
+        "style": {
+          "font_family": "serif",
+          "text_align": "justify"
+        }
+      }
+    },
+    {
+      "id": "footnote-link",
+      "match": {
+        "selector": "a[href^='#fn']"
+      },
+      "action": {
+        "type": "annotate",
+        "label": "脚注"
+      }
+    },
+    {
+      "id": "hide-pagination-note",
+      "match": {
+        "selector": ".pagination-note"
+      },
+      "action": {
+        "type": "hide"
+      }
+    },
+    {
+      "id": "strip-page-footer",
+      "match": {
+        "selector": "footer.page-footer"
+      },
+      "action": {
+        "type": "page_break_after"
+      }
+    },
+    {
+      "id": "replace-ligature",
+      "match": {
+        "selector": "p"
+      },
+      "action": {
+        "type": "replace_text",
+        "find": "ﬁ",
+        "replace": "fi"
+      }
+    },
+    {
+      "id": "redirect-external",
+      "match": {
+        "selector": "a[href^='http']"
+      },
+      "action": {
+        "type": "redirect",
+        "target": "external://"
+      }
+    }
+  ]
+}

@@ -1,0 +1,103 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonread/moonread/src/util"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn ascii_lower(String) -> String
+
+pub fn ascii_lower_char(Char) -> Char
+
+pub fn char_at(String, Int32) -> Char?
+
+pub fn char_to_int(Char) -> Int32
+
+pub fn char_to_string(Char) -> String
+
+pub fn codepoint_to_char(Int32) -> Char?
+
+pub fn contains(String, String) -> Bool
+
+pub fn digit_value(Char) -> Int32?
+
+pub fn double_as_int(Double) -> Int32?
+
+pub fn ends_with(String, String) -> Bool
+
+pub fn ends_with_ci(String, String) -> Bool
+
+pub fn fragment_of(String) -> String
+
+pub fn from_chars(Array[Char]) -> String
+
+pub fn has_scheme(String) -> Bool
+
+pub fn hex_digit_char(Int32) -> Char
+
+pub fn hex_digit_value(Char) -> Int32?
+
+pub fn index_of(String, String) -> Int32?
+
+pub fn is_digit(Char) -> Bool
+
+pub fn is_xml_space(Char) -> Bool
+
+pub fn join_nl(Array[String]) -> String
+
+pub fn matches_at(Array[Char], Int32, Array[Char]) -> Bool
+
+pub fn natural_cmp(String, String) -> Ordering
+
+pub fn parse_double(String) -> Double?
+
+pub fn parse_int(String) -> Int32?
+
+pub fn path_basename(String) -> String
+
+pub fn path_dirname(String) -> String
+
+pub fn path_normalize(String, String) -> String
+
+pub fn percent_decode(String) -> Result[String, String]
+
+pub fn replace_all(String, String, String) -> String
+
+pub fn scheme_of(String) -> String
+
+pub fn slice_chars(Array[Char], Int32, Int32) -> Array[Char]
+
+pub fn slice_string(String, Int32, Int32) -> String
+
+pub fn split_char(String, Char) -> Array[String]
+
+pub fn split_str(String, String) -> Array[String]
+
+pub fn starts_with(String, String) -> Bool
+
+pub fn strip_fragment(String) -> String
+
+pub fn to_chars(String) -> Array[Char]
+
+pub fn trim(String) -> String
+
+pub fn utf8_decode(Array[Int32]) -> Result[String, String]
+
+pub fn utf8_len(String) -> Int32
+
+pub fn zip_path_is_unsafe(String) -> Bool
+
+// Errors
+
+// Types and methods
+#derive(Eq, @debug.Debug)
+pub(all) enum Ordering {
+  Less
+  Equal
+  Greater
+}
+
+// Type aliases
+
+// Traits

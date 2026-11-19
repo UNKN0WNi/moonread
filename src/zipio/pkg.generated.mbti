@@ -1,0 +1,43 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonread/moonread/src/zipio"
+
+import {
+  "moonbitlang/core/debug",
+  "moonread/moonread/src/container",
+}
+
+// Values
+pub const DEFAULT_BUDGET_BYTES : Int32 = 67108864
+
+pub const FZIP_VERSION : String = "0.8.8"
+
+pub fn adapter_error(String, String) -> String
+
+pub fn binary_entry(String, Int32) -> DecodedEntry
+
+pub fn entries_to_archive(String, Array[DecodedEntry], Int32) -> Result[ZipReport, String]
+
+pub fn text_entry(String, String) -> DecodedEntry
+
+// Errors
+
+// Types and methods
+#derive(Eq, @debug.Debug)
+pub(all) struct DecodedEntry {
+  name : String
+  byte_len : Int32
+  text : String?
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct ZipReport {
+  archive : @container.Archive
+  text_names : Array[String]
+  binary_names : Array[String]
+  warnings : Array[String]
+  total_bytes : Int32
+}
+
+// Type aliases
+
+// Traits

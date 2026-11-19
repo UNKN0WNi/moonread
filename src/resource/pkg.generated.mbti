@@ -1,0 +1,55 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonread/moonread/src/resource"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn allow_all_policy() -> RemotePolicy
+
+pub fn default_remote_policy() -> RemotePolicy
+
+pub fn fragment(String) -> String
+
+pub fn has_property(String, String) -> Bool
+
+pub fn is_css_media(String) -> Bool
+
+pub fn is_font_media(String) -> Bool
+
+pub fn is_image_media(String) -> Bool
+
+pub fn is_markup_media(String) -> Bool
+
+pub fn is_page_image(String) -> Bool
+
+pub fn media_type_of(String) -> String
+
+pub fn resolve(String, String) -> ResourceRef
+
+pub fn resolve_path(String, String) -> Result[String, String]
+
+pub fn resolve_with(String, String, RemotePolicy) -> ResourceRef
+
+// Errors
+
+// Types and methods
+#derive(Eq, @debug.Debug)
+pub(all) struct RemotePolicy {
+  allow_remote : Bool
+  allow_inline : Bool
+  inline_budget_bytes : Int32
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) enum ResourceRef {
+  InArchive(String)
+  Inline(String, String, Bool)
+  Remote(String, String, Bool)
+  Invalid(String)
+}
+
+// Type aliases
+
+// Traits

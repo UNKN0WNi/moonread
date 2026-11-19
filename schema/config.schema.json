@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moonread.dev/schema/config.json",
+  "title": "MoonRead 全局配置",
+  "description": "MoonRead 全局配置。严格 JSON：未知字段会报错。字段表与 MoonBit 实现由 tools/validate_json.py 对账。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "配置格式版本。当前只支持 1。"
+    },
+    "theme": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "paper",
+            "night",
+            "custom"
+          ]
+        },
+        "background": {
+          "$ref": "#/$defs/color"
+        },
+        "foreground": {
+          "$ref": "#/$defs/color"
+        },
+        "accent": {
+          "$ref": "#/$defs/color"
+        }
+      },
+      "patternProperties": {
+        "^_": {
+          "description": "以 _ 开头的键是给人看的说明或编辑器元数据，运行时忽略。"
+        }
+      }
+    },
+    "typography": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "font_family": {
+          "type": "string",
+          "minLength": 1
+        },
+        "font_size_pt": {
+          "type": "number",
+          "minimum": 6,
+          "maximum": 72
+        },
+        "line_height": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 4
+        },
+        "paragraph_spacing_em": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "justify": {
+          "type": "boolean"
+        },
+        "hyphenate": {
+          "type": "boolean"
+        }
+      },
+      "patternProperties": {
+        "^_": {
+          "description": "以 _ 开头的键是给人看的说明或编辑器元数据，运行时忽略。"
+        }
+      }
+    },
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "width_mm": {
+          "type": "number",
+          "minimum": 40,
+          "maximum": 1000
+        },
+        "height_mm": {
+          "type": "number",
+          "minimum": 40,
+          "maximum": 1000
+        },
+        "margin_top_mm": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 200
+        },
+        "margin_bottom_mm": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 200
+        },
+        "margin_inner_mm": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 200
+        },
+        "margin_outer_mm": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 200
+        },
+        "column_gap_mm": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 200
+        },
+        "direction": {
+          "type": "string",
+          "enum": [
+            "ltr",
+            "rtl"
+          ]
+        }
+      },
+      "patternProperties": {
+        "^_": {
+          "description": "以 _ 开头的键是给人看的说明或编辑器元数据，运行时忽略。"
+        }
+      }
+    },
+    "behavior": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "default_mode": {
+          "type": "string",
+          "enum": [
+            "paginated",
+            "scrolled"
+          ]
+        },
+        "scroll_line_height_ratio": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 10
+        },
+        "restore_position_on_open": {
+          "type": "boolean"
+        },
+        "prefetch_pages": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 32
+        },
+        "animation": {
+          "type": "string",
+          "enum": [
+            "none",
+            "slide",
+            "fade"
+          ]
+        }
+      },
+      "patternProperties": {
+        "^_": {
+          "description": "以 _ 开头的键是给人看的说明或编辑器元数据，运行时忽略。"
+        }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "data_dir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "progress_format": {
+          "type": "string",
+          "enum": [
+            "json"
+          ]
+        },
+        "progress_every_pages": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        }
+      },
+      "patternProperties": {
+        "^_": {
+          "description": "以 _ 开头的键是给人看的说明或编辑器元数据，运行时忽略。"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "color": {
+      "type": "string",
+      "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
+    }
+  },
+  "patternProperties": {
+    "^_": {
+      "description": "以 _ 开头的键是给人看的说明或编辑器元数据，运行时忽略。"
+    }
+  }
+}

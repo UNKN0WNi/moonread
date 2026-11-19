@@ -1,0 +1,47 @@
+{
+  "_comment": "MoonRead 全局配置。所有字段均为严格 JSON：拼错字段名会直接报错，不会悄悄用默认值。",
+  "_how_to_customize": "直接改想要的值即可；不需要的字段可删掉，程序会使用内置默认值。想验证改动，运行 python3 tools/validate_json.py。",
+  "$schema": "https://moonread.dev/schema/config.json",
+  "version": 1,
+  "theme": {
+    "_comment": "颜色。mode=paper/night/custom；用 #RRGGBB 写颜色。",
+    "mode": "paper",
+    "background": "#f5f2e8",
+    "foreground": "#2b2b2b",
+    "accent": "#8b3a2f"
+  },
+  "typography": {
+    "_comment": "排版。字号单位是 pt，行高是倍数，段落间距是 em。",
+    "font_family": "serif",
+    "font_size_pt": 12,
+    "line_height": 1.6,
+    "paragraph_spacing_em": 0.8,
+    "justify": true,
+    "hyphenate": false
+  },
+  "page": {
+    "_comment": "纸张。单位是毫米；上下边距之和必须小于页高，左右之和必须小于页宽。",
+    "width_mm": 120,
+    "height_mm": 180,
+    "margin_top_mm": 15,
+    "margin_bottom_mm": 18,
+    "margin_inner_mm": 12,
+    "margin_outer_mm": 12,
+    "column_gap_mm": 0,
+    "direction": "ltr"
+  },
+  "behavior": {
+    "_comment": "阅读行为。paginated=翻页，scrolled=滚动；prefetch_pages 是预取页数。",
+    "default_mode": "paginated",
+    "scroll_line_height_ratio": 1.0,
+    "restore_position_on_open": true,
+    "prefetch_pages": 2,
+    "animation": "none"
+  },
+  "storage": {
+    "_comment": "本地数据。progress_format 目前只支持 json。",
+    "data_dir": "~/.local/share/moonread",
+    "progress_format": "json",
+    "progress_every_pages": 1
+  }
+}

@@ -1,0 +1,195 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonread/moonread/src/epub"
+
+import {
+  "moonbitlang/core/debug",
+  "moonread/moonread/src/container",
+  "moonread/moonread/src/xml",
+}
+
+// Values
+pub fn all_fixtures() -> Array[(String, FixtureSpec)]
+
+pub fn all_spine_paths(EpubBook) -> Array[String]
+
+pub fn build(FixtureSpec) -> @container.Archive
+
+pub fn chapter_paths(EpubBook) -> Array[String]
+
+pub fn chapter_xhtml(String) -> String
+
+pub fn count_nav_points(Array[NavPoint]) -> Int32
+
+pub fn css_paths(EpubBook) -> Array[String]
+
+pub fn describe(EpubBook) -> String
+
+pub fn detect_encryption(@container.Archive, String) -> EncryptionInfo
+
+pub fn empty_metadata() -> Metadata
+
+pub fn find_item_by_id(EpubBook, String) -> ManifestItem?
+
+pub fn find_item_by_path(EpubBook, String) -> ManifestItem?
+
+pub fn font_paths(EpubBook) -> Array[String]
+
+pub fn has_prop(ManifestItem, String) -> Bool
+
+pub fn image_paths(EpubBook) -> Array[String]
+
+pub fn nav_path(EpubBook) -> String
+
+pub fn nav_point(String, String, String) -> NavPoint
+
+pub fn ncx_path(EpubBook) -> String
+
+pub fn no_encryption() -> EncryptionInfo
+
+pub fn open(@container.Archive) -> Result[EpubBook, String]
+
+pub fn open_strict(@container.Archive) -> Result[EpubBook, String]
+
+pub fn open_with(@container.Archive, Bool) -> Result[EpubBook, String]
+
+pub fn parse_container(String, Bool) -> Result[ContainerInfo, String]
+
+pub fn parse_guide(@xml.Element, Array[String]) -> Array[GuideRef]
+
+pub fn parse_nav(String, String) -> Result[(Array[NavPoint], Array[String]), String]
+
+pub fn parse_ncx(String, String) -> Result[(Array[NavPoint], Array[String]), String]
+
+pub fn parse_opf(String, String, Bool) -> Result[OpfInfo, String]
+
+pub fn primary_creator(Metadata) -> String
+
+pub fn read_all_css(EpubBook) -> Array[(String, String)]
+
+pub fn read_chapter(EpubBook, Int32) -> Result[String, String]
+
+pub fn read_resource(@container.Archive, String) -> Result[String, String]
+
+pub fn report(EpubBook) -> String
+
+pub fn simple_spec() -> FixtureSpec
+
+// Errors
+
+// Types and methods
+#derive(Eq, @debug.Debug)
+pub(all) struct ContainerInfo {
+  opf_path : String
+  version : String
+  warnings : Array[String]
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct EncryptionInfo {
+  encrypted : Bool
+  schemes : String
+  message : String
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct EpubBook {
+  opf_path : String
+  container_version : String
+  package_version : String
+  unique_id : String
+  metadata : Metadata
+  manifest : Array[ManifestItem]
+  spine : Array[SpineItem]
+  guide : Array[GuideRef]
+  nav_toc : Array[NavPoint]
+  ncx_toc : Array[NavPoint]
+  encryption : EncryptionInfo
+  warnings : Array[String]
+  archive : @container.Archive
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct FixtureSpec {
+  mut title : String
+  mut creator : String
+  mut language : String
+  mut chapters : Array[(String, String)]
+  mut epub3 : Bool
+  mut with_nav : Bool
+  mut with_ncx : Bool
+  mut with_css : Bool
+  mut with_cover : Bool
+  mut omit_container : Bool
+  mut mimetype_last : Bool
+  mut broken_idref : Bool
+  mut malformed_opf : Bool
+  mut encrypted : Bool
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct GuideRef {
+  typ : String
+  title : String
+  path : String
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct ManifestItem {
+  id : String
+  href : String
+  path : String
+  media_type : String
+  properties : Array[String]
+  fallbacks : Array[String]
+  resolve_error : String
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct Metadata {
+  mut title : String
+  mut creators : Array[(String, String)]
+  mut contributors : Array[String]
+  mut language : String
+  mut identifiers : Array[(String, String)]
+  mut publisher : String
+  mut date : String
+  mut description : String
+  mut rights : Array[String]
+  mut subjects : Array[String]
+  mut source : String
+  mut modified : String
+  mut cover_path : String
+  mut page_progression_direction : String
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct NavPoint {
+  label : String
+  path : String
+  fragment : String
+  children : Array[NavPoint]
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct OpfInfo {
+  metadata : Metadata
+  manifest : Array[ManifestItem]
+  spine : Array[SpineItem]
+  guide : Array[GuideRef]
+  package_version : String
+  unique_id : String
+  warnings : Array[String]
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct SpineItem {
+  idref : String
+  linear : Bool
+  path : String
+  media_type : String
+  resolved : Bool
+}
+
+// Type aliases
+
+// Traits

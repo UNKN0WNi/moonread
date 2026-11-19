@@ -1,0 +1,109 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonread/moonread/src/rules"
+
+import {
+  "moonbitlang/core/debug",
+  "moonread/moonread/src/jsonio",
+  "moonread/moonread/src/xml",
+}
+
+// Values
+pub fn apply_rules(@xml.Element, RuleSet) -> Applied
+
+pub fn empty_effects() -> RuleEffects
+
+pub fn fired_count(RuleEffects, String) -> Int32
+
+pub fn load_rules(String) -> Result[RuleSet, String]
+
+pub fn load_rules_json(@jsonio.Json) -> Result[RuleSet, String]
+
+pub fn matches_alternation(String, String) -> Bool
+
+pub fn merge_style(@xml.Element, String, String) -> @xml.Element
+
+pub fn parse_selector(String) -> Result[Selector, String]
+
+pub fn rule_matches(Rule, Array[@xml.Element]) -> Bool
+
+pub fn supported_action_types() -> Array[String]
+
+pub fn unfired_rules(RuleSet, RuleEffects) -> Array[String]
+
+// Errors
+
+// Types and methods
+#derive(Eq, @debug.Debug)
+pub(all) enum Action {
+  Remove
+  Hide
+  SetStyle(Array[(String, String)])
+  PageBreakBefore
+  PageBreakAfter
+  ReplaceText(String, String)
+  Annotate(String)
+  Redirect(String)
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct Applied {
+  doc : @xml.Element
+  effects : RuleEffects
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) enum Combinator {
+  Descendant
+  Child
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct Compound {
+  tag : String?
+  id : String?
+  classes : Array[String]
+  attrs : Array[(String, String, String)]
+  pseudo : Array[String]
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct Rule {
+  id : String
+  match_ : RuleMatch
+  action : Action
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct RuleEffects {
+  breaks_before : Array[String]
+  breaks_after : Array[String]
+  annotations : Array[(String, String)]
+  redirects : Array[(String, String, String)]
+  removed : Array[String]
+  hidden : Array[String]
+  notes : Array[String]
+  fired : Array[String]
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct RuleMatch {
+  selector : Array[Selector]
+  text_regex : String
+  has_text_regex : Bool
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct RuleSet {
+  version : Int32
+  rules : Array[Rule]
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct Selector {
+  parts : Array[Compound]
+  combinators : Array[Combinator]
+}
+
+// Type aliases
+
+// Traits

@@ -1,0 +1,58 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonread/moonread/src/paginator"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn describe(Progress) -> String
+
+pub fn idiv(Int32, Int32) -> Int32
+
+pub fn locator(Int32, Int32, Int32) -> Locator
+
+pub fn locator_at(Int32, Int32, Int32, String) -> Locator
+
+pub fn make_progress(String, Int32, Int32, Int32, Int32, String) -> Progress
+
+pub fn permille(Int32, Int32, Int32, Int32) -> Int32
+
+pub fn permille_text(Int32) -> String
+
+pub fn progress_from_json(String) -> Result[Progress, String]
+
+pub fn progress_to_json(Progress) -> String
+
+pub fn restore(Progress, Int32, (Int32) -> Int32) -> Restore
+
+// Errors
+
+// Types and methods
+#derive(Eq, @debug.Debug)
+pub(all) struct Locator {
+  chapter : Int32
+  page : Int32
+  total_pages : Int32
+  anchor : String
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct Progress {
+  book_key : String
+  locator : Locator
+  ratio_permille : Int32
+  total_chapters : Int32
+  updated : String
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) enum Restore {
+  Exact(Locator)
+  Clamped(Locator, String)
+  Rejected(String)
+}
+
+// Type aliases
+
+// Traits

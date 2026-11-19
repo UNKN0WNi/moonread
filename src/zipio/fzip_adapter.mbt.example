@@ -1,0 +1,63 @@
+/// fzip 适配器（**默认构建排除**：文件名后缀为 `.mbt.example`）。
+///
+/// 接入步骤（见 scripts/fetch_deps.sh 与 docs/DEV-GUIDE.md）：
+///
+/// 1. `mv src/zipio/fzip_adapter.mbt.example src/zipio/fzip_adapter.mbt`
+/// 2. 在 `src/zipio/moon.pkg.json` 的 `imports` 里加上依赖：
+///    ```json
+///    { "imports": ["../util", "../container", "hustcer/fzip@0.8.8"] }
+///    ```
+///    已知踩坑：**本地 workspace 依赖也必须写版本号**。
+/// 3. 按下面 `TODO(签名核对)` 三处逐一确认 `@fzip` 的真实签名，
+///    然后跑 `moon check --deny-warn`。
+/// 4. 若 fzip 的 API 与假设不符（概率低但影响中），把本文件整体换成
+///    `CAIMEOX/zipper` 或宿主直传目录即可——`src/zipio/zipio.mbt` 的
+///    `entries_to_archive` 与内核其余部分都不受影响。
+
+///| 从 .epub/.cbz 的原始字节得到 `Archive`。
+///|
+///| `bytes` 的类型故意留作注释：MoonBit 各版本的 `Bytes` 构造入口不同
+///| （`@fs.read_bytes_file` / `Bytes::of_array` / 宿主传入），
+///| 由调用方决定，本函数只负责解压与归类。
+pub fn open_archive_from_bytes(
+  name : String,
+  // TODO(签名核对) 1/3：@fzip 的输入类型（Bytes / Array[Int] / String）
+  bytes : @fzip.Bytes,
+  budget_bytes : Int,
+) -> Result[ZipReport, String] {
+  // TODO(签名核对) 2/3：unzip_sync 的返回形状（是否 Result、条目字段名）
+  let unzipped = @fzip.unzip_sync(bytes)
+  let entries : Array[DecodedEntry] = []
+  for e in unzipped.entries {
+    if e.is_text {
+      entries.push(text_entry(e.name, e.text))
+    } else {
+      entries.push(binary_entry(e.name, e.data.length()))
+    }
+  }
+  // TODO(签名核对) 3/3：条目顺序是否等于中央目录顺序
+  //（EPUB 的 `mimetype` 首位判定依赖这一点）
+  match entries_to_archive(name, entries, budget_bytes) {
+    Err(msg) => Err(adapter_error("fzip", msg))
+    Ok(r) => Ok(r)
+  }
+}
+
+///| 只读取单个条目的原文（章节懒加载路径）。
+pub fn read_one(
+  bytes : @fzip.Bytes,
+  target : String,
+) -> Result[String, String] {
+  let unzipped = @fzip.unzip_sync(bytes)
+  let mut found : String? = None
+  for e in unzipped.entries {
+    if e.name == target {
+      found = Some(e.text)
+      break
+    }
+  }
+  match found {
+    Some(t) => Ok(t)
+    None => Err(adapter_error("fzip", "条目不存在：" + target))
+  }
+}

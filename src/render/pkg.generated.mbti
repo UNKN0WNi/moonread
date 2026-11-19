@@ -1,0 +1,51 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonread/moonread/src/render"
+
+import {
+  "moonbitlang/core/debug",
+  "moonread/moonread/src/paginate",
+  "moonread/moonread/src/xml",
+}
+
+// Values
+pub fn apply_break_marks(Array[MeasuredBlock], Array[String], Array[String]) -> Array[@paginate.Block]
+
+pub fn backend_name(Backend) -> String
+
+pub fn collapsed_text(@xml.Element) -> String
+
+pub fn lines_of(String, Int32) -> Int32
+
+pub fn measure(Backend, RenderRequest) -> Result[Array[MeasuredBlock], String]
+
+pub fn total_height(Array[MeasuredBlock]) -> Double
+
+pub fn void_tag_names() -> Array[String]
+
+// Errors
+
+// Types and methods
+#derive(Eq, @debug.Debug)
+pub(all) enum Backend {
+  Null
+  Crater
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct MeasuredBlock {
+  path : String
+  block : @paginate.Block
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct RenderRequest {
+  doc : @xml.Element
+  viewport_width : Double
+  line_height : Double
+  font_size_px : Double
+  avg_char_width_ratio : Double
+}
+
+// Type aliases
+
+// Traits

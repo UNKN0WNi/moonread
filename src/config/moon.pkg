@@ -1,0 +1,6 @@
+// 包清单：imports 列出本包依赖的其他包，路径为「模块名/目录」。
+import {
+  "moonread/moonread/src/jsonio",
+  "moonread/moonread/src/paginate",
+  "moonread/moonread/src/util",
+}

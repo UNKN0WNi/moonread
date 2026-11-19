@@ -1,0 +1,15 @@
+// 包清单：imports 列出本包依赖的其他包，路径为「模块名/目录」。
+// 可执行入口包：moon run / moon build 会生成程序。
+pkgtype(kind: "executable")
+
+import {
+  "moonread/moonread/src/config",
+  "moonread/moonread/src/container",
+  "moonread/moonread/src/core",
+  "moonread/moonread/src/epub",
+  "moonread/moonread/src/paginate",
+  "moonread/moonread/src/paginator",
+  "moonread/moonread/src/render",
+  "moonread/moonread/src/rules",
+  "moonread/moonread/src/toc",
+}

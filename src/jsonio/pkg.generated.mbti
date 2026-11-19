@@ -1,0 +1,79 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonread/moonread/src/jsonio"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn arr_items(Json) -> Array[Json]
+
+pub fn arr_len(Json) -> Int32
+
+pub fn as_bool(Json) -> Bool?
+
+pub fn as_double(Json) -> Double?
+
+pub fn as_int(Json) -> Int32?
+
+pub fn as_str(Json) -> String?
+
+pub fn encode(Json) -> String
+
+pub fn encode_string_literal(String) -> String
+
+pub fn is_null(Json) -> Bool
+
+pub fn j_arr(Array[Json]) -> Json
+
+pub fn j_bool(Bool) -> Json
+
+pub fn j_int(Int32) -> Json
+
+pub fn j_obj(Array[(String, Json)]) -> Json
+
+pub fn j_str(String) -> Json
+
+pub fn obj_get(Json, String) -> Json?
+
+pub fn obj_keys(Json) -> Array[String]
+
+pub fn obj_len(Json) -> Int32
+
+pub fn parse(String) -> Result[Json, String]
+
+pub fn reject_unknown_fields(Json, ReadOnlyArray[String], String) -> Result[Unit, String]
+
+pub fn require_arr(Json, String, String) -> Result[Array[Json], String]
+
+pub fn require_bool(Json, String, String) -> Result[Bool, String]
+
+pub fn require_double(Json, String, String) -> Result[Double, String]
+
+pub fn require_field(Json, String, String) -> Result[Json, String]
+
+pub fn require_int(Json, String, String) -> Result[Int32, String]
+
+pub fn require_obj(Json, String, String) -> Result[Json, String]
+
+pub fn require_str(Json, String, String) -> Result[String, String]
+
+pub fn type_name(Json) -> String
+
+// Errors
+
+// Types and methods
+#derive(Eq, @debug.Debug)
+pub(all) enum Json {
+  JNull
+  JBool(Bool)
+  JInt(Int32)
+  JNum(Double)
+  JStr(String)
+  JArr(Array[Json])
+  JObj(Array[(String, Json)])
+}
+
+// Type aliases
+
+// Traits

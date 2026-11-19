@@ -1,0 +1,46 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonread/moonread/src/toc"
+
+import {
+  "moonbitlang/core/debug",
+  "moonread/moonread/src/epub",
+}
+
+// Values
+pub fn chapter_index_of(Toc, @epub.EpubBook, Int32) -> Int32
+
+pub fn current_item(Toc, String) -> TocItem?
+
+pub fn depth_first(Array[TocItem]) -> Array[TocItem]
+
+pub fn from_book(@epub.EpubBook) -> Toc
+
+pub fn from_spine(@epub.EpubBook) -> Array[TocItem]
+
+pub fn render_text(Toc) -> String
+
+pub fn total_items(Toc) -> Int32
+
+// Errors
+
+// Types and methods
+#derive(Eq, @debug.Debug)
+pub(all) struct Toc {
+  items : Array[TocItem]
+  source : String
+  warnings : Array[String]
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct TocItem {
+  label : String
+  path : String
+  fragment : String
+  level : Int32
+  ordinal : Int32
+  children : Array[TocItem]
+}
+
+// Type aliases
+
+// Traits

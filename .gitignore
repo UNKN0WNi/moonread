@@ -1,0 +1,10 @@
+_target/
+_build/
+*.tmp
+.DS_Store
+__pycache__/
+*.pyc
+tests/corpus/**/*.epub
+tests/corpus/**/*.cbz
+tests/reference/*.png.actual
+*.wasm.tmp

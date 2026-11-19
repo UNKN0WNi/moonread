@@ -1,0 +1,189 @@
+{
+  "$schema": "https://moonread.dev/schema/fixtures-manifest.json",
+  "version": 1,
+  "license": "Apache-2.0",
+  "source": "本仓库自建（tools/gen_fixtures.py 与 src/epub/fixture.mbt）",
+  "note": "期望值必须与 src/epub/fixture.mbt::all_fixtures() 一致；不一致即为缺陷。",
+  "books": [
+    {
+      "file": "epub/epub3-basic.epub",
+      "name": "epub3-basic",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "MoonRead 样例",
+        "chapters": 2,
+        "toc_items": 2,
+        "resources": 3
+      }
+    },
+    {
+      "file": "epub/epub2-ncx.epub",
+      "name": "epub2-ncx",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "MoonRead 样例",
+        "chapters": 2,
+        "toc_items": 2,
+        "resources": 3
+      }
+    },
+    {
+      "file": "epub/zero-chapters.epub",
+      "name": "zero-chapters",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "MoonRead 样例",
+        "chapters": 0,
+        "toc_items": 0,
+        "resources": 3
+      }
+    },
+    {
+      "file": "epub/thirty-chapters.epub",
+      "name": "thirty-chapters",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "MoonRead 样例",
+        "chapters": 30,
+        "toc_items": 30,
+        "resources": 3
+      }
+    },
+    {
+      "file": "epub/no-nav.epub",
+      "name": "no-nav",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "MoonRead 样例",
+        "chapters": 2,
+        "toc_items": 0,
+        "resources": 2
+      }
+    },
+    {
+      "file": "epub/mimetype-last.epub",
+      "name": "mimetype-last",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "MoonRead 样例",
+        "chapters": 2,
+        "toc_items": 2,
+        "resources": 3
+      }
+    },
+    {
+      "file": "epub/broken-idref.epub",
+      "name": "broken-idref",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "MoonRead 样例",
+        "chapters": 2,
+        "toc_items": 2,
+        "resources": 3
+      }
+    },
+    {
+      "file": "epub/encrypted.epub",
+      "name": "encrypted",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "MoonRead 样例",
+        "chapters": 2,
+        "toc_items": 2,
+        "resources": 3
+      }
+    },
+    {
+      "file": "epub/with-cover.epub",
+      "name": "with-cover",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "MoonRead 样例",
+        "chapters": 2,
+        "toc_items": 2,
+        "resources": 4
+      }
+    },
+    {
+      "file": "epub/no-css.epub",
+      "name": "no-css",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "MoonRead 样例",
+        "chapters": 2,
+        "toc_items": 2,
+        "resources": 2
+      }
+    },
+    {
+      "file": "epub/entity-title.epub",
+      "name": "entity-title",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "",
+        "chapters": 2,
+        "toc_items": 2,
+        "resources": 3
+      }
+    },
+    {
+      "file": "epub/five-both-toc.epub",
+      "name": "five-both-toc",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "MoonRead 样例",
+        "chapters": 5,
+        "toc_items": 5,
+        "resources": 4
+      }
+    },
+    {
+      "file": "epub/missing-creator-lang.epub",
+      "name": "missing-creator-lang",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "MoonRead 样例",
+        "chapters": 2,
+        "toc_items": 2,
+        "resources": 3
+      }
+    },
+    {
+      "file": "epub/no-container.epub",
+      "name": "no-container",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "MoonRead 样例",
+        "chapters": 2,
+        "toc_items": 2,
+        "resources": 3
+      }
+    },
+    {
+      "file": "epub/malformed-opf.epub",
+      "name": "malformed-opf",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "MoonRead 样例",
+        "chapters": 0,
+        "toc_items": 0,
+        "resources": 0
+      }
+    }
+  ]
+}

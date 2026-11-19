@@ -1,0 +1,52 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "moonread/moonread/src/container"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn archive(String, Array[(String, String)]) -> Archive
+
+pub fn build_checked(String, Array[(String, String)], Int32) -> (Archive, Array[String])
+
+pub fn entries(Archive) -> Array[EntryInfo]
+
+pub fn entry_count(Archive) -> Int32
+
+pub fn find_index(Archive, String) -> Int32?
+
+pub fn has(Archive, String) -> Bool
+
+pub fn memory_archive(Array[(String, String)]) -> Archive
+
+pub fn mimetype_is_first(Archive) -> Bool
+
+pub fn names(Archive) -> Array[String]
+
+pub fn names_natural_sorted(Archive) -> Array[String]
+
+pub fn read(Archive, String) -> Result[String, String]
+
+pub fn sort_natural(Array[String]) -> Unit
+
+pub fn total_bytes(Archive) -> Int32
+
+// Errors
+
+// Types and methods
+#derive(Eq, @debug.Debug)
+pub(all) struct Archive {
+  name : String
+  items : Array[(String, String)]
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct EntryInfo {
+  name : String
+  byte_len : Int32
+}
+
+// Type aliases
+
+// Traits

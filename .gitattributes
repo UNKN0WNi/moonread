@@ -1,0 +1,6 @@
+* text=auto
+*.epub binary
+*.cbz binary
+*.png binary
+*.wasm binary
+*.exe binary

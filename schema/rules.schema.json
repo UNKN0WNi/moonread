@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://moonread.dev/schema/rules.json",
+  "title": "MoonRead 规则文件",
+  "description": "MoonRead 规则集。规则按数组顺序依次应用；未知动作类型必须报错并指出规则 id。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "rules"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "const": 1
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/rule"
+      }
+    }
+  },
+  "$defs": {
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "match",
+        "action"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "match": {
+          "$ref": "#/$defs/match"
+        },
+        "action": {
+          "$ref": "#/$defs/action"
+        }
+      },
+      "patternProperties": {
+        "^_": {
+          "description": "以 _ 开头的键是给人看的说明或编辑器元数据，运行时忽略。"
+        }
+      }
+    },
+    "match": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selector"
+      ],
+      "properties": {
+        "selector": {
+          "type": "string",
+          "minLength": 1,
+          "description": "选择器子集：tag / * / #id / .class / [attr] / [attr=v] / [attr^=v] / [attr$=v] / [attr*=v] / [attr~=v] / :first-child / :last-child / :root / 后代(空格) / 子代(>) / 逗号列表。不支持 :nth-child() / :not() / + / ~。"
+        },
+        "text_regex": {
+          "type": "string",
+          "description": "实际语义是 '|' 分隔的字面量交替，ASCII 大小写无关包含匹配（不是完整正则）。"
+        }
+      },
+      "patternProperties": {
+        "^_": {
+          "description": "以 _ 开头的键是给人看的说明或编辑器元数据，运行时忽略。"
+        }
+      }
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "remove",
+            "hide",
+            "set_style",
+            "page_break_before",
+            "page_break_after",
+            "replace_text",
+            "annotate",
+            "redirect"
+          ]
+        },
+        "style": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "仅 type=set_style 使用"
+        },
+        "find": {
+          "type": "string",
+          "minLength": 1
+        },
+        "replace": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "set_style"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "style"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "replace_text"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "find",
+              "replace"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "annotate"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "label"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "redirect"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "target"
+            ]
+          }
+        }
+      ],
+      "patternProperties": {
+        "^_": {
+          "description": "以 _ 开头的键是给人看的说明或编辑器元数据，运行时忽略。"
+        }
+      }
+    }
+  },
+  "patternProperties": {
+    "^_": {
+      "description": "以 _ 开头的键是给人看的说明或编辑器元数据，运行时忽略。"
+    }
+  }
+}
