@@ -46,6 +46,12 @@ moon run apps/embed-demo        # 内存示例（四端）
 bash scripts/ci.sh              # 全部本地检查
 ```
 
+## Desktop app
+
+想要即下即读的 Windows 桌面版？[MoonRead Desktop](https://github.com/UNKN0WNi/moonread-desktop) 复用本项目的 EPUB 解析规则，提供约 13 MB 的绿色单文件 `MoonRead.exe`——免安装、不写注册表，界面用系统 WebView2 渲染，不打包浏览器内核。[下载](https://github.com/UNKN0WNi/moonread-desktop/releases)。
+
+> 需要 Windows 10/11 与 WebView2 Runtime（Win11 与较新 Win10 默认自带）。当前解析为纯文本 + 目录，不含图片排版与 DRM。
+
 ## Documentation
 
 - [架构](docs/ARCHITECTURE.md) — 分层、依赖方向与关键取舍
@@ -57,7 +63,7 @@ bash scripts/ci.sh              # 全部本地检查
 
 ## Status
 
-本仓库交付的是**阅读内核 + 最小 CLI**，不是完整阅读器应用；Web / 桌面壳由宿主提供。DRM / 加密 EPUB 只检测不解密，`Backend::Crater` 尚未接入真实渲染器。
+本仓库交付的是**阅读内核 + 最小 CLI**，不是完整阅读器应用；桌面壳见 [MoonRead Desktop](https://github.com/UNKN0WNi/moonread-desktop)，Web 壳由宿主提供。DRM / 加密 EPUB 只检测不解密，`Backend::Crater` 尚未接入真实渲染器。
 
 当前验证：四端 `moon check --deny-warn` 零警告、四端各 101 项测试通过、native / js / wasm-gc 输出一致，JSON 与语料自检通过。
 
