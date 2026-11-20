@@ -31,4 +31,7 @@ python3 tools/validate_json.py
 step "语料 manifest 自检"
 python3 tools/corpus_check.py --require-manifest --skip-missing-books
 
+step "形式化证明"
+bash scripts/prove.sh
+
 step "完成"

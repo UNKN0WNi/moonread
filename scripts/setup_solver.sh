@@ -9,9 +9,15 @@ PREFERRED="${PREFERRED_SOLVER:-z3}"
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# GitHub Actions 的 runner 不是 root，但有免密 sudo；本地容器里通常直接是 root。
+SUDO=""
+if [ "$(id -u)" != "0" ] && have sudo; then
+  SUDO="sudo"
+fi
+
 install_with_apt() {
-  apt-get update
-  apt-get install -y "$PREFERRED"
+  $SUDO apt-get update
+  $SUDO apt-get install -y "$PREFERRED"
 }
 
 install_from_release() {
@@ -32,7 +38,7 @@ if have "$PREFERRED"; then
   echo "已存在：$(command -v "$PREFERRED")"
 else
   echo "安装 $PREFERRED ..."
-  if have apt-get && [ "$(id -u)" = "0" ]; then
+  if have apt-get && { [ "$(id -u)" = "0" ] || have sudo; }; then
     install_with_apt || install_from_release
   else
     install_from_release
@@ -49,9 +55,4 @@ else
 fi
 
 echo
-echo "== moon prove =="
-if have moon; then
-  moon prove
-else
-  echo "SKIP: 未找到 moon 工具链。先装 MoonBit：curl -fsSL https://bit.ly/moonbit | bash" >&2
-fi
+echo "求解器就绪。执行证明请运行：bash scripts/prove.sh"

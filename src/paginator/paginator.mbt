@@ -45,12 +45,10 @@ pub(all) struct Progress {
   updated : String
 }
 
-///| 非负整数除法。用减法实现，避免依赖 `/`（MoonBit 的 `/` 是浮点除）
-
-///| 或 `//`（不同工具链版本支持不一致）。这里操作数都是 0..1000 量级，
-
 ///|
-/// 减法循环最多一千次，成本可忽略，换来的是三端逐位一致（）。
+/// 非负整数除法。用减法实现，避免依赖 `/`（MoonBit 的 `/` 是浮点除）
+/// 或 `//`（不同工具链版本支持不一致）。这里操作数都是 0..1000 量级，
+/// 减法循环最多一千次，成本可忽略，换来的是三端逐位一致。
 pub fn idiv(a : Int32, b : Int32) -> Int32 {
   if b <= 0 {
     return 0
@@ -62,6 +60,23 @@ pub fn idiv(a : Int32, b : Int32) -> Int32 {
     q = q + 1
   }
   q
+}
+
+///|
+/// 千分比夹到 0..1000。证明契约保证持久化进度永远落在合法区间，
+/// 由 `moon prove` 机器检查（当前证明器只支持 Bool / 整数逻辑）。
+fn clamp_ratio(
+  v : Int32,
+) -> Int32 where {
+  proof_ensure: result => ratio_ok(result),
+} {
+  if v > 1000 {
+    1000
+  } else if v < 0 {
+    0
+  } else {
+    v
+  }
 }
 
 ///|
@@ -92,14 +107,7 @@ pub fn permille(
   let base = idiv(ch * 1000, total_chapters)
   let span = idiv(1000, total_chapters)
   let within = idiv(span * pg, pages_in_chapter)
-  let v = base + within
-  if v > 1000 {
-    1000
-  } else if v < 0 {
-    0
-  } else {
-    v
-  }
+  clamp_ratio(base + within)
 }
 
 ///|

@@ -71,4 +71,4 @@ L4  paginate / paginator / toc / bookmark / rules / config / core
 - `Backend::Crater` 尚未接入真实 crater；
 - `apps/epub-cli` 依赖 `moonbitlang/x/fs` 读磁盘文件，因此只在 native 运行；内核本身四端可编译；
 - 仓库没有 Web / 桌面 / 服务端应用壳，只有 `apps/embed-demo` 与 native 的 `apps/epub-cli`；
-- 未提供 `moon prove` 的 SMT 求解器配置。
+- `moon prove` 依赖外部 SMT 求解器；`scripts/setup_solver.sh` 负责安装，`scripts/prove.sh` 负责执行，已接入 CI。

@@ -72,6 +72,24 @@ jobs:
       - name: moon build
         run: moon build --target ${{ matrix.target }}
 
+  prove:
+    name: formal proof / moon prove
+    runs-on: ubuntu-latest
+    env:
+      MOONREAD_REQUIRE_PROVE: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MoonBit
+        uses: ./.github/actions/setup-moonbit
+
+      - name: Install SMT solver
+        run: bash scripts/setup_solver.sh
+
+      - name: moon prove
+        run: bash scripts/prove.sh
+
   consistency:
     name: cross-backend consistency
     runs-on: ubuntu-latest

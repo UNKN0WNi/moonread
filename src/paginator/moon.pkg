@@ -2,3 +2,8 @@
 import {
   "moonread/moonread/src/jsonio",
 }
+
+// 进度千分比的夹紧函数带机器检查的契约，保证持久化进度在 0..1000。
+// `moon prove` 需要外部 SMT 求解器，CI 由 scripts/setup_solver.sh 准备。
+
+proof_enabled = true

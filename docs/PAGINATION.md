@@ -59,4 +59,4 @@
 
 - 尚未接入真实 crater 的 `fragmentation` 公共 API；
 - 还没有与 KOReader / foliate 做逐页边界对照；
-- `moon prove` 需要外部 SMT 求解器，仓库未内置。
+- `moon prove` 需要外部 SMT 求解器；CI 通过 `scripts/setup_solver.sh` 安装并执行 `scripts/prove.sh`，本地可用 `bash scripts/setup_solver.sh` 准备环境。
