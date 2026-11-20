@@ -166,6 +166,69 @@ test "规则真的改变了 DOM 与断页" {
 }
 
 ///|
+/// 不变量：rules 记录的结构路径与 render 度量块的路径必须来自同一套编号。
+/// 这条测试钉死 P0-1 —— 曾经 rules 从文档根编号且文本占位、render 从 body
+/// 空路径起步且文本不占位，导致 page_break 规则 100% 静默失效。
+test "规则断页路径与度量块路径同源（强制断页真的命中）" {
+  // 样例章节 body 下是 h1[0], p[1], p[2]（文本节点不占序号）。
+  // 用选择器 p 给两个段落都打 page_break_before；标题自带的断页不算规则命中。
+  let set = rules_from(
+    "{\"version\":1,\"rules\":[{\"id\":\"break-paras\",\"match\":{\"selector\":\"p\"},\"action\":{\"type\":\"page_break_before\"}}]}",
+  )
+  let a = @epub.build(@epub.simple_spec())
+  match @core.open_book(a, @config.default_config(), set, @render.Null) {
+    Err(_) => panic()
+    Ok(b) =>
+      match @core.render_chapter(b, 0) {
+        Err(_) => panic()
+        Ok(cp) => {
+          // rules 侧应记录两个 p 的真实路径
+          assert_true(
+            cp.effects.breaks_before.length() == 2,
+            msg="两条 p 规则都应命中：" +
+              cp.effects.breaks_before.length().to_string(),
+          )
+          let path1 = cp.effects.breaks_before[0]
+          let path2 = cp.effects.breaks_before[1]
+          assert_true(
+            @util.contains(path1, "body") && @util.contains(path1, "/p["),
+            msg="规则路径应含 body 前缀：" + path1,
+          )
+          // 同一批路径必须能在度量块里找到（对接成功）
+          let ids : Array[String] = []
+          for blk in cp.blocks {
+            ids.push(blk.id)
+          }
+          assert_true(in_arr(ids, path1), msg="块路径含 " + path1)
+          assert_true(in_arr(ids, path2), msg="块路径含 " + path2)
+          // 标题自带 1 个断页 + 两个 p 的规则断页 = 至少 3 个
+          let mut marked = 0
+          for blk in cp.blocks {
+            if blk.break_before {
+              marked = marked + 1
+            }
+          }
+          assert_true(
+            marked >= 3,
+            msg="标题+两段都应有断页标记，实际 " +
+              marked.to_string(),
+          )
+        }
+      }
+  }
+}
+
+///|
+fn in_arr(arr : Array[String], needle : String) -> Bool {
+  for x in arr {
+    if x == needle {
+      return true
+    }
+  }
+  false
+}
+
+///|
 fn count_warnings(arr : Array[String], needle : String) -> Int32 {
   let mut n = 0
   for x in arr {

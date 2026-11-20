@@ -154,7 +154,10 @@ fn measure_null(req : RenderRequest) -> Result[Array[MeasuredBlock], String] {
   }
   let out : Array[MeasuredBlock] = []
   let body = find_body(req.doc)
-  collect_leaf_blocks(body, "", out, chars_per_line, req.line_height)
+  // 关键：用 body 在**整棵文档**里的真实路径做起点，而不是空串。
+  // 否则度量块路径是 p[1]，而 rules 记录的是 body[1]/p[1]，永远匹配不上。
+  let body_path = @xml.path_of_first(req.doc, "body")
+  collect_leaf_blocks(body, body_path, out, chars_per_line, req.line_height)
   Ok(out)
 }
 
@@ -163,15 +166,6 @@ fn find_body(root : @xml.Element) -> @xml.Element {
   match @xml.find_descendant(root, "body") {
     Some(b) => b
     None => root
-  }
-}
-
-///|
-fn path_of(parent : String, tag : String, index : Int32) -> String {
-  if parent.length() == 0 {
-    tag + "[" + index.to_string() + "]"
-  } else {
-    parent + "/" + tag + "[" + index.to_string() + "]"
   }
 }
 
@@ -197,20 +191,18 @@ fn collect_leaf_blocks(
       @xml.EText(t) => {
         let trimmed = @util.trim(t)
         if trimmed.length() > 0 && !is_block_tag(el.tag) {
-          // 容器元素里的裸文本：按一个匿名文本块计入，避免内容丢失
+          // 容器元素里的裸文本：按一个匿名文本块计入，避免内容丢失。
+          // 文本不占元素序号，与 rules/render 共用的编号规则保持一致。
           out.push(MeasuredBlock::{
-            path: path_of(my_path, "#text", idx),
+            path: @xml.child_path(my_path, "#text", idx),
             block: text_block_of("#text", trimmed, chars_per_line, line_height),
           })
-          idx = idx + 1
         }
       }
       @xml.EElement(child) => {
-        let cp = path_of(my_path, child.tag, idx)
+        let cp = @xml.child_path(my_path, child.tag, idx)
+        idx = idx + 1
         collect_leaf_blocks(child, cp, out, chars_per_line, line_height)
-        if contains_block_child(child) || is_block_tag(child.tag) {
-          idx = idx + 1
-        }
       }
     }
   }

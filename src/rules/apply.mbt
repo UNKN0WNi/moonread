@@ -278,16 +278,8 @@ pub fn apply_rules(root : @xml.Element, set : RuleSet) -> Applied {
 }
 
 ///|
-fn path_of(parent : String, tag : String, index : Int32) -> String {
-  if parent.length() == 0 {
-    tag + "[" + index.to_string() + "]"
-  } else {
-    parent + "/" + tag + "[" + index.to_string() + "]"
-  }
-}
-
-///|
-/// `my_path` 为空串表示根元素（此时不占用序号，路径就是标签名）。
+/// `my_path` 为空串表示文档根元素。**路径编号规则由 `@xml.child_path` 统一提供**：
+/// 只数元素子节点、文本不占序号；渲染侧走同一函数，断页对接才成立。
 fn rebuild(
   el : @xml.Element,
   my_path : String,
@@ -301,16 +293,13 @@ fn rebuild(
   let mut idx = 0
   for c in el.children {
     match c {
-      @xml.EText(t) => {
-        children.push(@xml.EText(t))
-        idx = idx + 1
-      }
+      @xml.EText(t) => children.push(@xml.EText(t))
       @xml.EElement(child) => {
-        let cp = path_of(my_path, child.tag, idx)
+        let cp = @xml.child_path(my_path, child.tag, idx)
+        idx = idx + 1
         let kept = rebuild(child, cp, stack, set, effects)
         if !contains_path(effects.removed, cp) {
           children.push(@xml.EElement(kept))
-          idx = idx + 1
         }
       }
     }
