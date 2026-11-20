@@ -20,9 +20,10 @@
 ///   是「按显示宽度折行」的近似（汉字记 2、其它记 1，见 `display_width`），
 ///   图片/表格/figure 高度用经验常量。**不要用它计算真实书的精确页数**——
 ///   生产排版应走 `Crater`；Null 的价值是让语义与不变量可测、可复现。
-/// - `Crater`：真实后端。调用 `render_html_to_paint_tree` / `compute_layout`
-///   的适配代码在 `src/zipio`（唯一带外部依赖的包）里，需要联网取包后才能编译。
-///   未接入时 `measure` 返回清晰错误而不是 panic（验收项）。
+/// - `Crater`：真实后端，**尚未接入**。`src/zipio` 只提供 ZIP 解压适配
+///   （`hustcer/fzip`），与排版渲染无关；crater 适配代码目前不存在。
+///   接入清单见 `docs/RENDER-BACKEND.md`。未接入时 `measure` 返回清晰错误
+///   而不是 panic。
 
 ///|
 /// 一次度量请求。`viewport_width` / `line_height` / `font_size_px` 单位是 CSS px。
@@ -107,7 +108,7 @@ pub fn measure(
     Null => measure_null(req)
     Crater =>
       Err(
-        "Crater 后端尚未接入：还需要 `mizchi/crater-renderer`（fzip 已接入，见 src/zipio/fzip_adapter.mbt）。在此之前请使用 Backend::Null。",
+        "Crater 后端尚未接入：需要 html5-mbt + css + crater-renderer（清单见 docs/RENDER-BACKEND.md）。src/zipio 只有 ZIP 解压，与排版无关。在此之前请使用 Backend::Null。",
       )
   }
 }

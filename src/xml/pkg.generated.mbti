@@ -12,6 +12,8 @@ pub fn attr_or_empty(Element, String) -> String
 
 pub fn child_elements(Element) -> Array[Element]
 
+pub fn child_path(String, String, Int32) -> String
+
 pub fn child_text(Element) -> String
 
 pub fn count_elements(Element) -> Int32
@@ -42,11 +44,15 @@ pub fn parse_document_with(String, ParseOptions) -> Result[Element, String]
 
 pub fn parse_fragment(String, ParseOptions) -> Result[Element, String]
 
+pub fn path_of_first(Element, String) -> String
+
 pub fn strict_options() -> ParseOptions
 
 pub fn tag_is(Element, String) -> Bool
 
 pub fn text_content(Element) -> String
+
+pub fn walk_paths(Element, String, Array[(String, Element)]) -> Unit
 
 // Errors
 
