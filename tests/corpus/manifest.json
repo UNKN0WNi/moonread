@@ -1,0 +1,35 @@
+{
+  "$schema": "https://moonread.dev/schema/fixtures-manifest.json",
+  "version": 1,
+  "license": "Public domain",
+  "source": "第三方公开 EPUB（非本仓库自建），来源与 SHA-256 见每本书",
+  "note": "期望值由 MoonRead 内核对真实文件解析得到；corpus_check.py 会用 tools/probe 逐项对账，并校验 sha256。",
+  "books": [
+    {
+      "file": "epub/trevelyan-type-tester.epub",
+      "name": "trevelyan-type-tester",
+      "license": "Public domain",
+      "source": "https://github.com/nicoverbruggen/type-tester-epub/releases/tag/v1.2",
+      "sha256": "d7f5c20a49a849334def8cef598b4a2ea1b6068251df733a4cedcf1c86220996",
+      "expect": {
+        "title": "Trevelyan's Type Tester",
+        "chapters": 11,
+        "toc_items": 11,
+        "resources": 17
+      }
+    },
+    {
+      "file": "epub/trevelyan-type-tester-kepub.epub",
+      "name": "trevelyan-type-tester-kepub",
+      "license": "Public domain",
+      "source": "https://github.com/nicoverbruggen/type-tester-epub/releases/tag/v1.2",
+      "sha256": "03f280f297f4f375fc613aadee885389e8e599092049609237de7f02740528bd",
+      "expect": {
+        "title": "Trevelyan's Type Tester",
+        "chapters": 11,
+        "toc_items": 11,
+        "resources": 17
+      }
+    }
+  ]
+}

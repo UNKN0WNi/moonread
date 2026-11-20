@@ -46,7 +46,12 @@
 
 ```bash
 python3 tools/gen_fixtures.py
-python3 tools/corpus_check.py --require-manifest --skip-missing-books
+python3 tools/corpus_check.py --require-manifest --require-probe
 ```
 
-当前只做清单自检；与内核解析结果的自动对账尚未接入 CI。
+另有 2 本第三方公开 EPUB（公版排版测试书及其 Kobo 变体），见
+`tests/corpus/manifest.json`。清单钉死来源与 SHA-256，避免上游静默变更。
+
+`--require-probe` 会调用 `tools/probe`，把磁盘上的 EPUB 经 fzip + 内核完整解析，
+再与 manifest 的标题 / 章节数 / 目录项数 / 资源数逐项对账。CI 强制开启，
+不再只看 manifest 自检。fixture 的期望值曾把章节数误写成常量 1，正是这一步查出的。

@@ -26,6 +26,8 @@ jobs:
 
       - name: Setup MoonBit
         uses: ./.github/actions/setup-moonbit
+        with:
+          native: "true"
 
       - name: moon fmt --check
         run: moon fmt --check
@@ -44,8 +46,8 @@ jobs:
       - name: Strict JSON self-check
         run: python tools/validate_json.py
 
-      - name: Fixture manifest self-check
-        run: python tools/corpus_check.py --require-manifest --skip-missing-books
+      - name: Corpus manifest and kernel reconciliation
+        run: python tools/corpus_check.py --require-manifest --require-probe
 
   test:
     name: test / ${{ matrix.target }}

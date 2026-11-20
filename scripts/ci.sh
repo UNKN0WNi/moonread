@@ -28,8 +28,8 @@ bash scripts/cross_target.sh
 step "严格 JSON 自检"
 python3 tools/validate_json.py
 
-step "语料 manifest 自检"
-python3 tools/corpus_check.py --require-manifest --skip-missing-books
+step "语料 manifest 自检与内核对账"
+python3 tools/corpus_check.py --require-manifest --require-probe
 
 step "形式化证明"
 bash scripts/prove.sh

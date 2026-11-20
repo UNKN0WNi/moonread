@@ -1,7 +1,7 @@
 # 测试资产
 
-当前仓库只包含 `fixtures/`。所有语料都是项目自建，不附带未经许可的第三方电子书
-或漫画。
+仓库包含 `fixtures/`（项目自建）与 `corpus/`（第三方公版 EPUB）。
+不附带未经许可的第三方电子书或漫画。
 
 ## fixtures
 
@@ -10,14 +10,19 @@ tests/
 ├── fixtures/
 │   ├── epub/            15 本最小 EPUB（由 tools/gen_fixtures.py 生成）
 │   └── manifest.json    文件名、来源、许可与期望值
+└── corpus/
+    ├── epub/            2 本第三方公版 EPUB（含 Kobo 变体）
+    └── manifest.json    来源、许可、SHA-256 与期望值
 ```
 
 生成与检查：
 
 ```bash
 python3 tools/gen_fixtures.py
-python3 tools/corpus_check.py --require-manifest --skip-missing-books
+python3 tools/corpus_check.py --require-manifest --require-probe
 ```
+
+`--require-probe` 会调用 `tools/probe`，用真实内核解析磁盘上的 EPUB 并逐项对账。
 
 `manifest.json` 记录每本书的：
 

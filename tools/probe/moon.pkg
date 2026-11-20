@@ -1,0 +1,17 @@
+// 语料对账探针：真实 EPUB -> 内核解析结果 JSON。
+// 只做 native：要读磁盘文件，CI 里由 corpus_check.py 调用。
+pkgtype(kind: "executable")
+
+import {
+  "moonread/moonread/src/config",
+  "moonread/moonread/src/core",
+  "moonread/moonread/src/epub",
+  "moonread/moonread/src/jsonio",
+  "moonread/moonread/src/render",
+  "moonread/moonread/src/rules",
+  "moonread/moonread/src/toc",
+  "moonread/moonread/src/util",
+  "moonread/moonread/src/zipio",
+  "moonbitlang/x/fs",
+  "moonbitlang/core/env",
+}

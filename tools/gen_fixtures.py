@@ -16,6 +16,7 @@ Python 的 zipfile 可以逐条目指定 compress_type，天然满足——
 
 from __future__ import annotations
 
+import html
 import json
 import sys
 import zipfile
@@ -221,7 +222,9 @@ def write_epub(path: Path, name: str, s, *, omit_container=False, mimetype_last=
 
 def expect_for(name, s):
     chapters = s["chapters"]
-    res = 1
+    # resources = OPF manifest 的 item 数：章节 + nav + NCX + CSS + 封面。
+    # 旧实现把章节数误写成常量 1，导致 manifest 与内核实际值差 1..N。
+    res = len(chapters)
     if s["with_nav"]:
         res += 1
     if s["with_ncx"]:
@@ -231,15 +234,18 @@ def expect_for(name, s):
     if s["with_cover"]:
         res += 1
     toc = len(chapters) if s["with_nav"] or s["with_ncx"] else 0
+    broken = name == "malformed-opf"
     return {
-        "title": "" if name == "entity-title" else s["title"],
-        "chapters": 0 if name in ("malformed-opf", "zero-chapters") else len(chapters),
-        "toc_items": 0 if name == "malformed-opf" else toc,
-        "resources": 0 if name == "malformed-opf" else res,
+        # 内核会解码 XML 实体；损坏 OPF 打不开，标题为空。
+        "title": "" if broken else html.unescape(s["title"]),
+        "chapters": 0 if broken or name == "zero-chapters" else len(chapters),
+        "toc_items": 0 if broken else toc,
+        "resources": 0 if broken else res,
     }
 
 
 def main() -> int:
+    manifest_only = "--manifest-only" in sys.argv[1:]
     OUT.mkdir(parents=True, exist_ok=True)
     manifest = {
         "$schema": "https://moonread.dev/schema/fixtures-manifest.json",
@@ -251,15 +257,16 @@ def main() -> int:
     }
     for name, s in specs():
         p = OUT / f"{name}.epub"
-        write_epub(
-            p,
-            name,
-            s,
-            omit_container=(name == "no-container"),
-            mimetype_last=(name == "mimetype-last"),
-            malformed=(name == "malformed-opf"),
-            encrypted=(name == "encrypted"),
-        )
+        if not manifest_only:
+            write_epub(
+                p,
+                name,
+                s,
+                omit_container=(name == "no-container"),
+                mimetype_last=(name == "mimetype-last"),
+                malformed=(name == "malformed-opf"),
+                encrypted=(name == "encrypted"),
+            )
         manifest["books"].append(
             {
                 "file": f"epub/{name}.epub",

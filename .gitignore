@@ -7,5 +7,8 @@ __pycache__/
 *.pyc
 tests/corpus/**/*.epub
 tests/corpus/**/*.cbz
+# 例外：两本固定 SHA-256 的公版 EPUB，用于 CI 真实解析对账
+!tests/corpus/epub/trevelyan-type-tester.epub
+!tests/corpus/epub/trevelyan-type-tester-kepub.epub
 tests/reference/*.png.actual
 *.wasm.tmp

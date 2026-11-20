@@ -65,8 +65,8 @@ bash scripts/ci.sh              # 全部本地检查
 
 本仓库交付的是**阅读内核 + 最小 CLI**，不是完整阅读器应用；桌面壳见 [MoonRead Desktop](https://github.com/UNKN0WNi/moonread-desktop)，Web 壳由宿主提供。DRM / 加密 EPUB 只检测不解密，`Backend::Crater` 尚未接入真实渲染器。
 
-当前验证：四端 `moon check --deny-warn` 零警告、四端各 101 项测试通过、native / js / wasm-gc 输出一致，JSON 与语料自检通过。
+当前验证：四端 `moon check --deny-warn` 零警告、四端各 118 项测试通过、native / js / wasm-gc 输出一致，JSON 校验、`moon prove` 形式化证明，以及 17 本 EPUB（15 本自建 + 2 本真实公版书）的内核对账全部通过。
 
 ## License
 
-Apache-2.0。测试语料为项目自建，来源见 `tests/fixtures/manifest.json`。
+Apache-2.0。15 本自建语料与 2 本第三方公版 EPUB 的来源、许可与 SHA-256 分别见 `tests/fixtures/manifest.json` 与 `tests/corpus/manifest.json`。

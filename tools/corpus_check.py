@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import subprocess
 import sys
@@ -62,19 +63,22 @@ def check_manifests(corpus_dirs):
     return entries, problems
 
 
-def run_kernel_probe():
-    """尝试调用内核导出程序；不存在则返回 None。"""
-    for cmd in (
-        ["moon", "run", "tools/probe"],
-        ["moon", "run", "apps/embed-demo", "--", "--json"],
-    ):
-        try:
-            out = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=120)
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            continue
-        if out.returncode == 0 and out.stdout.strip().startswith("{"):
-            return json.loads(out.stdout)
-    return None
+def run_kernel_probe(dirs):
+    """调用内核导出程序；跑不起来则返回 None。"""
+    cmd = ["moon", "run", "--target", "native", "tools/probe"] + [
+        str(d.relative_to(ROOT)) for d in dirs
+    ]
+    try:
+        out = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=300)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    if out.returncode != 0:
+        print("  probe stderr:", out.stderr.strip()[:400])
+        return None
+    text = out.stdout.strip()
+    if not text.startswith("{"):
+        return None
+    return json.loads(text)
 
 
 def main() -> int:
@@ -86,6 +90,11 @@ def main() -> int:
         help="manifest 缺失或不合法即失败（CI 默认开启）",
     )
     ap.add_argument("--skip-missing-books", action="store_true")
+    ap.add_argument(
+        "--require-probe",
+        action="store_true",
+        help="要求内核对账真正执行；探针缺失或期望值不符即失败（CI 必开）",
+    )
     args = ap.parse_args()
 
     dirs = [ROOT / p.strip() for p in args.corpus.split(",") if p.strip()]
@@ -96,8 +105,6 @@ def main() -> int:
 
     entries, problems = check_manifests(dirs)
     print(f"== manifest 自检：{len(entries)} 本 ==")
-    for p in problems:
-        print(f"  FAIL {p}")
 
     missing_books = [t for t, d, b in entries if not (d / b["file"]).exists()]
     if missing_books:
@@ -107,23 +114,46 @@ def main() -> int:
             print("       真实语料需要网络；本仓库默认构建里只有内存生成的 fixture")
             return 1
 
-    probe = run_kernel_probe()
+    # 真实语料必须逐字节可复现：manifest 里钉死 SHA-256。
+    for tag, d, b in entries:
+        want = b.get("sha256")
+        if not want:
+            continue
+        p = (d / b["file"]).resolve()
+        if not p.exists():
+            continue
+        actual = hashlib.sha256(p.read_bytes()).hexdigest()
+        if actual != want:
+            problems.append(f"{tag}: sha256 期望 {want}，实际 {actual}")
+
+    for p in problems:
+        print(f"  FAIL {p}")
+
+    probe = run_kernel_probe(dirs)
     if probe is None:
         print("== 内核对账：SKIP ==")
-        print("  未找到内核导出程序（tools/probe）。manifest 已自检通过，")
-        print("  但期望值与实际解析结果**未对账**——这一步需要能跑 moon 的环境。")
+        print("  内核探针 tools/probe 未能运行。manifest 已自检，")
+        print("  但期望值与实际解析结果**未对账**。")
+        if args.require_probe:
+            print("  FAIL --require-probe 下不允许跳过内核对账")
+            return 1
     else:
         print("== 内核对账 ==")
         bad = 0
         for tag, _d, b in entries:
             got = probe.get(b["file"])
             if got is None:
-                print(f"  SKIP {tag}: 内核输出里没有这一本")
+                if args.require_probe:
+                    print(f"  FAIL {tag}: 内核输出里没有这一本")
+                    bad += 1
+                else:
+                    print(f"  SKIP {tag}: 内核输出里没有这一本")
                 continue
             for k, v in b["expect"].items():
                 if got.get(k) != v:
                     print(f"  FAIL {tag}.{k}: 期望 {v}，实际 {got.get(k)}")
                     bad += 1
+        print(f"  已对账 {len(entries) - bad}/{len(entries)} 本")
         if bad:
             return 1
 
