@@ -15,9 +15,11 @@
 ///
 /// ## 现状
 ///
-/// - `Null`：零依赖、完全确定性的度量后端。它让 的分页算法、的
-///   验收项 /、以及全部内核测试**在没有 crater 的情况下就能跑通**。
-///   度量模型是「按码位数折行」的近似，不是真实排版。
+/// - `Null`：**确定性测试替身**，不是生产排版后端。零依赖、完全确定，它让
+///   分页算法、验收项与全部内核测试在没有 crater 的情况下就能跑通。度量模型
+///   是「按显示宽度折行」的近似（汉字记 2、其它记 1，见 `display_width`），
+///   图片/表格/figure 高度用经验常量。**不要用它计算真实书的精确页数**——
+///   生产排版应走 `Crater`；Null 的价值是让语义与不变量可测、可复现。
 /// - `Crater`：真实后端。调用 `render_html_to_paint_tree` / `compute_layout`
 ///   的适配代码在 `src/zipio`（唯一带外部依赖的包）里，需要联网取包后才能编译。
 ///   未接入时 `measure` 返回清晰错误而不是 panic（验收项）。
@@ -333,26 +335,54 @@ pub fn collapsed_text(el : @xml.Element) -> String {
 }
 
 ///|
+/// 字符的**显示宽度**，单位是「半个汉字宽的 ASCII 字符」：
+/// ASCII 与拉丁记 1，CJK / 全角记 2。`avg_char_width_ratio=0.5` 时，
+/// `chars_per_line` 表示一行能放多少个 ASCII 单位，因此汉字必须记 2，
+/// 否则一段 3000 字的中文会被算成一半的行数、页数低估约 2 倍。
+///
+/// 这是 Backend::Null 的确定性近似（不是真实字体度量）；覆盖常见 CJK 区间，
+/// 组合音标与 emoji 按 1 处理，保持四端完全一致。
+pub fn display_width(c : Char) -> Int32 {
+  let cp = @util.char_to_int(c)
+  // 韩文字母 / CJK 部首符号注音 / 韩文音节 / CJK 兼容表意 /
+  // 竖排标点 / CJK 兼容形式 / 全角 ASCII / 全角符号 / emoji / CJK 扩展 B..F
+  let wide = (cp >= 0x1100 && cp <= 0x115f) ||
+    (cp >= 0x2e80 && cp <= 0xa4cf && cp != 0x303f) ||
+    (cp >= 0xac00 && cp <= 0xd7a3) ||
+    (cp >= 0xf900 && cp <= 0xfaff) ||
+    (cp >= 0xfe10 && cp <= 0xfe19) ||
+    (cp >= 0xfe30 && cp <= 0xfe6f) ||
+    (cp >= 0xff00 && cp <= 0xff60) ||
+    (cp >= 0xffe0 && cp <= 0xffe6) ||
+    (cp >= 0x1f300 && cp <= 0x1f64f) ||
+    (cp >= 0x20000 && cp <= 0x3fffd)
+  if wide {
+    2
+  } else {
+    1
+  }
+}
+
+///|
 /// 行数：至少 1 行（空文本也占一行，与 CSS 对空段落的行为一致）。
+/// 按显示宽度折行（汉字记 2），而不是按码位个数——见 `display_width`。
 pub fn lines_of(text : String, chars_per_line : Int32) -> Int32 {
   if chars_per_line <= 0 {
     return 1
   }
-  let n = @util.to_chars(text).length()
-  if n == 0 {
+  let cs = @util.to_chars(text)
+  if cs.length() == 0 {
     1
   } else {
     let mut lines = 1
     let mut used = 0
-    let mut i = 0
-    let cs = @util.to_chars(text)
-    while i < cs.length() {
-      if used == chars_per_line {
+    for c in cs {
+      let w = display_width(c)
+      if used + w > chars_per_line {
         lines = lines + 1
         used = 0
       }
-      used = used + 1
-      i = i + 1
+      used = used + w
     }
     lines
   }
