@@ -259,7 +259,7 @@ test "break_after_chapter_start=false 时章节不强制新页" {
 }
 
 ///|
-test "规则产生的强制断页：page_break_before / after" {
+test "块上的强制断页标记 page_break_before / after 生效" {
   let p = page_limit(100.0)
   let blocks = [
     @paginate.with_break_after(@paginate.text_block("a", 5, 1.0)),

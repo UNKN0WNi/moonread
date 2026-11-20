@@ -136,7 +136,7 @@ test "进度可保存并恢复" {
 }
 
 ///|
-test "规则真的改变了 DOM 与断页" {
+test "未命中的规则可诊断：命中 0 次并列入 unfired" {
   let set = rules_from(
     "{\"version\":1,\"rules\":[{\"id\":\"drop-footer\",\"match\":{\"selector\":\"footer.page-footer\"},\"action\":{\"type\":\"page_break_after\"}},{\"id\":\"kill-promo\",\"match\":{\"selector\":\"div.promo\",\"text_regex\":\"subscribe|订阅\"},\"action\":{\"type\":\"remove\"}}]}",
   )
