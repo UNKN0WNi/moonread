@@ -164,6 +164,14 @@ pub fn render_chapter(b : Book, index : Int32) -> Result[ChapterPages, String] {
   for u in @rules.unfired_rules(b.rules, applied.effects) {
     warnings.push("规则 '" + u + "' 在本章命中 0 次")
   }
+  // 消费 annotate/redirect 的效果：这两个动作已真正改写 DOM，
+  // 这里把命中结果暴露到 warnings，宿主与诊断脚本才能看到（曾是全仓零消费）。
+  for ann in applied.effects.annotations {
+    warnings.push("注记 " + ann.0 + " => " + ann.1)
+  }
+  for red in applied.effects.redirects {
+    warnings.push("重定向 " + red.0 + ": " + red.1 + " => " + red.2)
+  }
   if !@paginate.invariant_no_content_loss(marked, result) {
     warnings.push(
       "不变式 1（不丢内容）未通过——这是缺陷，请附带本书与配置上报",

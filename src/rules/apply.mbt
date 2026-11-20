@@ -374,18 +374,46 @@ fn apply_one(
     }
     ReplaceText(find, repl) => replace_in_subtree(el, find, repl)
     Annotate(label) => {
+      // 真正改写 DOM：把注记标签写到属性上，渲染宿主可据此画边注/角标。
+      // 曾经这里只 push effects、原样返回 el，动作等于空转。
       effects.annotations.push((path, label))
-      el
+      set_attr(el, "data-moonread-note", label)
     }
     Redirect(target) => {
       let href = match @xml.attr_ci(el, "href") {
         Some(v) => v
         None => ""
       }
+      // 真正改写 DOM：把 href 指向 target，链接重定向才生效。
       effects.redirects.push((path, href, target))
-      el
+      set_attr(el, "href", target)
     }
   }
+}
+
+///|
+/// 设置/覆盖一个属性（按 local_name 大小写无关匹配），返回新元素。
+/// 与 `merge_style` 同一思路，但作用于任意属性。
+pub fn set_attr(
+  el : @xml.Element,
+  name : String,
+  value : String,
+) -> @xml.Element {
+  let want = @util.ascii_lower(name)
+  let attrs : Array[(String, String)] = []
+  let mut replaced = false
+  for kv in el.attrs {
+    if @util.ascii_lower(@xml.local_name(kv.0)) == want {
+      attrs.push((kv.0, value))
+      replaced = true
+    } else {
+      attrs.push(kv)
+    }
+  }
+  if !replaced {
+    attrs.push((name, value))
+  }
+  @xml.Element::{ tag: el.tag, attrs, children: el.children, }
 }
 
 ///|

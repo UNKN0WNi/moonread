@@ -219,6 +219,59 @@ test "规则断页路径与度量块路径同源（强制断页真的命中）" 
 }
 
 ///|
+/// Annotate / Redirect 必须真正改写 DOM（曾只 push effects、原样返回 el）。
+test "annotate 与 redirect 真正改写 DOM 且效果可消费" {
+  let doc = match
+    @xml.parse_document(
+      @util.join_nl([
+        "<html><body>", "<p id=\"x\"><a href=\"#fn1\">注我</a></p>", "<p><a href=\"http://example.com\">外链</a></p>",
+        "</body></html>",
+      ]),
+    ) {
+    Ok(d) => d
+    Err(_) => panic()
+  }
+  let set = rules_from(
+    "{\"version\":1,\"rules\":[{\"id\":\"ann\",\"match\":{\"selector\":\"a[href^='#fn']\"},\"action\":{\"type\":\"annotate\",\"label\":\"脚注\"}},{\"id\":\"redir\",\"match\":{\"selector\":\"a[href^='http']\"},\"action\":{\"type\":\"redirect\",\"target\":\"external://safe\"}}]}",
+  )
+  let applied = @rules.apply_rules(doc, set)
+  assert_true(
+    applied.effects.annotations.length() == 1,
+    msg="注记命中 1 处",
+  )
+  assert_true(
+    applied.effects.redirects.length() == 1,
+    msg="重定向命中 1 处",
+  )
+  // DOM 真的被改：注记属性写到了 a 上，href 被替换
+  let note = @xml.find_by_id(applied.doc, "x")
+  match note {
+    None => panic()
+    Some(p) => {
+      let links = @xml.find_all_child(p, "a")
+      assert_true(links.length() == 1, msg="有一个 a")
+      assert_true(
+        @xml.attr_ci(links[0], "data-moonread-note") == Some("脚注"),
+        msg="注记属性应写入 DOM",
+      )
+    }
+  }
+  let all_links : Array[@xml.Element] = []
+  for d in @xml.descendants(applied.doc) {
+    if @xml.tag_is(d, "a") {
+      all_links.push(d)
+    }
+  }
+  let mut saw_redirect = false
+  for a in all_links {
+    if @xml.attr_ci(a, "href") == Some("external://safe") {
+      saw_redirect = true
+    }
+  }
+  assert_true(saw_redirect, msg="href 应被改写成 target")
+}
+
+///|
 fn in_arr(arr : Array[String], needle : String) -> Bool {
   for x in arr {
     if x == needle {

@@ -26,6 +26,8 @@ pub fn parse_selector(String) -> Result[Selector, String]
 
 pub fn rule_matches(Rule, Array[@xml.Element]) -> Bool
 
+pub fn set_attr(@xml.Element, String, String) -> @xml.Element
+
 pub fn supported_action_types() -> Array[String]
 
 pub fn unfired_rules(RuleSet, RuleEffects) -> Array[String]
