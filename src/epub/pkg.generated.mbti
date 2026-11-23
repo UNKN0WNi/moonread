@@ -38,6 +38,10 @@ pub fn has_prop(ManifestItem, String) -> Bool
 
 pub fn image_paths(EpubBook) -> Array[String]
 
+pub fn main_title(Metadata) -> String
+
+pub fn nav_group(String) -> NavPoint
+
 pub fn nav_path(EpubBook) -> String
 
 pub fn nav_point(String, String, String) -> NavPoint
@@ -69,6 +73,10 @@ pub fn read_all_css(EpubBook) -> Array[(String, String)]
 pub fn read_chapter(EpubBook, Int32) -> Result[String, String]
 
 pub fn read_resource(@container.Archive, String) -> Result[String, String]
+
+pub fn refine(Metadata, String, String) -> String
+
+pub fn refine_all(Metadata, String, String) -> Array[RefineInfo]
 
 pub fn report(EpubBook) -> String
 
@@ -124,6 +132,7 @@ pub(all) struct FixtureSpec {
   mut broken_idref : Bool
   mut malformed_opf : Bool
   mut encrypted : Bool
+  mut rich_metadata : Bool
 }
 
 #derive(Eq, @debug.Debug)
@@ -147,6 +156,8 @@ pub(all) struct ManifestItem {
 #derive(Eq, @debug.Debug)
 pub(all) struct Metadata {
   mut title : String
+  mut titles : Array[TitleInfo]
+  mut refines : Array[RefineInfo]
   mut creators : Array[(String, String)]
   mut contributors : Array[String]
   mut language : String
@@ -168,6 +179,8 @@ pub(all) struct NavPoint {
   path : String
   fragment : String
   children : Array[NavPoint]
+  is_group : Bool
+  hidden : Bool
 }
 
 #derive(Eq, @debug.Debug)
@@ -182,12 +195,28 @@ pub(all) struct OpfInfo {
 }
 
 #derive(Eq, @debug.Debug)
+pub(all) struct RefineInfo {
+  target : String
+  property : String
+  value : String
+  scheme : String
+  lang : String
+}
+
+#derive(Eq, @debug.Debug)
 pub(all) struct SpineItem {
   idref : String
   linear : Bool
   path : String
   media_type : String
   resolved : Bool
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) struct TitleInfo {
+  value : String
+  lang : String
+  id : String
 }
 
 // Type aliases

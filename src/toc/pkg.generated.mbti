@@ -39,6 +39,8 @@ pub(all) struct TocItem {
   level : Int32
   ordinal : Int32
   children : Array[TocItem]
+  is_group : Bool
+  hidden : Bool
 }
 
 // Type aliases

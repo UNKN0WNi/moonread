@@ -4,6 +4,35 @@
 /// **不 import crater、不 import L4**。目录树在这里是「原始 NavPoint」，
 /// 带层级的 UI 语义由 `src/toc` 负责转换。
 
+///|
+/// 一个 `dc:title` 及其语言标注。
+///
+/// EPUB 3.3「The dc:title element」：元素可重复，`xml:lang` 可选；
+/// 文档顺序中的第一个是主标题。全部标题都要保留，不能被折叠成单个字符串。
+#derive(Debug, Eq)
+pub(all) struct TitleInfo {
+  value : String
+  /// `xml:lang`，缺省为空串（继承 `package/@xml:lang`）。
+  lang : String
+  /// `dc:title/@id`，供 `<meta refines="#id">` 关联。
+  id : String
+}
+
+///|
+/// 一条 `<meta refines="#id" property="..." scheme="..." xml:lang="...">`。
+///
+/// EPUB 3.3「The refines attribute」：修饰关系是合法的语义载体，
+/// 例如 `role`、`alternate-script`、`file-as`、`identifier-type`。
+#derive(Debug, Eq)
+pub(all) struct RefineInfo {
+  /// 被修饰元素的 id（去掉前导 `#`）。
+  target : String
+  property : String
+  value : String
+  scheme : String
+  lang : String
+}
+
 ///| Dublin Core 元数据。多值字段保留数组，因为 EPUB3 允许重复 `dc:` 元素。
 
 ///| 字段可变是为了让解析器按元素顺序增量填充（`parse_metadata`），
@@ -13,6 +42,10 @@
 #derive(Debug, Eq)
 pub(all) struct Metadata {
   mut title : String
+  /// 全部 `dc:title`（保序），首个即 `title`。合法多语言/分部标题不再丢失。
+  mut titles : Array[TitleInfo]
+  /// 全部 `meta refines` 修饰（保序），供宿主取 alternate-script / file-as 等。
+  mut refines : Array[RefineInfo]
   /// `(姓名, marcrel 角色)`；角色缺省为 `aut`。
   mut creators : Array[(String, String)]
   mut contributors : Array[String]
@@ -36,6 +69,8 @@ pub(all) struct Metadata {
 pub fn empty_metadata() -> Metadata {
   Metadata::{
     title: "",
+    titles: [],
+    refines: [],
     creators: [],
     contributors: [],
     language: "",
@@ -59,6 +94,44 @@ pub fn primary_creator(m : Metadata) -> String {
   } else {
     ""
   }
+}
+
+///|
+/// 主标题：EPUB 3.3 规定文档顺序中的首个 `dc:title` 即主标题。
+pub fn main_title(m : Metadata) -> String {
+  if m.titles.length() > 0 {
+    m.titles[0].value
+  } else {
+    m.title
+  }
+}
+
+///|
+/// 取某个 `<meta refines="#target" property="prop">` 的值；无匹配返回空串。
+/// `target` 传 `dc:title` / `dc:creator` 的 `@id`（不含 `#`）。
+pub fn refine(m : Metadata, target : String, property : String) -> String {
+  for r in m.refines {
+    if r.target == target && @util.ascii_lower(r.property) == property {
+      return r.value
+    }
+  }
+  ""
+}
+
+///|
+/// 取某元素全部 refinements（同一 target + property 可重复，保序）。
+pub fn refine_all(
+  m : Metadata,
+  target : String,
+  property : String,
+) -> Array[RefineInfo] {
+  let out : Array[RefineInfo] = []
+  for r in m.refines {
+    if r.target == target && @util.ascii_lower(r.property) == property {
+      out.push(r)
+    }
+  }
+  out
 }
 
 ///|
@@ -108,11 +181,36 @@ pub(all) struct NavPoint {
   path : String
   fragment : String
   children : Array[NavPoint]
+  /// EPUB 3.3 nav 内容模型允许 `li` 首元素是 `span`（分组标题，无 href）。
+  /// true 表示这是分组标签而非可跳转链接，`path` 通常为空。
+  is_group : Bool
+  /// HTML `hidden` 布尔属性：规范允许隐藏仅供机器处理的目录分支。
+  hidden : Bool
 }
 
 ///|
 pub fn nav_point(label : String, path : String, fragment : String) -> NavPoint {
-  NavPoint::{ label, path, fragment, children: [], }
+  NavPoint::{
+    label,
+    path,
+    fragment,
+    children: [],
+    is_group: false,
+    hidden: false,
+  }
+}
+
+///|
+/// 分组标题节点（EPUB3 nav 的 `span`）。
+pub fn nav_group(label : String) -> NavPoint {
+  NavPoint::{
+    label,
+    path: "",
+    fragment: "",
+    children: [],
+    is_group: true,
+    hidden: false,
+  }
 }
 
 ///|

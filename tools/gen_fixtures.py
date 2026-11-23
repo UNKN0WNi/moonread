@@ -58,17 +58,33 @@ CSS = (
 
 
 def opf(title, creator, lang, chapters, epub3, with_nav, with_ncx, with_css,
-        with_cover, broken_idref):
+        with_cover, broken_idref, rich_metadata=False):
     ver = "3.0" if epub3 else "2.0"
     lines = [
         '<?xml version="1.0" encoding="utf-8"?>',
         f'<package xmlns="http://www.idpf.org/2007/opf" version="{ver}" unique-identifier="uid">',
         '  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">',
         '    <dc:identifier id="uid">urn:uuid:moonread-sample</dc:identifier>',
-        f"    <dc:title>{title}</dc:title>",
-        f"    <dc:creator>{creator}</dc:creator>",
-        f"    <dc:language>{lang}</dc:language>",
     ]
+    if rich_metadata:
+        # EPUB 3.3 合法写法：首个 dc:title 是主标题，其余按 xml:lang 区分；
+        # creator 角色用 <meta refines> 表达，不丢插画师/别名/file-as 语义。
+        lines += [
+            f'    <dc:title id="title-main" xml:lang="en">{title}</dc:title>',
+            '    <dc:title id="title-alt" xml:lang="ja">副題サンプル</dc:title>',
+            f'    <dc:creator id="creator-main">{creator}</dc:creator>',
+            '    <dc:creator id="creator-ill">Illustrator</dc:creator>',
+            '    <meta refines="#creator-main" property="role" scheme="marc:relators">aut</meta>',
+            '    <meta refines="#creator-ill" property="role" scheme="marc:relators">ill</meta>',
+            '    <meta refines="#creator-main" property="alternate-script" xml:lang="ja">著者サンプル</meta>',
+            '    <meta refines="#creator-main" property="file-as">MOONBIT, </meta>',
+        ]
+    else:
+        lines += [
+            f"    <dc:title>{title}</dc:title>",
+            f"    <dc:creator>{creator}</dc:creator>",
+        ]
+    lines.append(f"    <dc:language>{lang}</dc:language>")
     if epub3:
         lines.append('    <meta property="dcterms:modified">2026-11-19T00:00:00Z</meta>')
     if with_cover:
@@ -103,14 +119,25 @@ def opf(title, creator, lang, chapters, epub3, with_nav, with_ncx, with_css,
     return "\n".join(lines) + "\n"
 
 
-def nav_xhtml(chapters):
-    items = "\n".join(f'<li><a href="{c}.xhtml">{t}</a></li>' for c, t in chapters)
+def nav_xhtml(chapters, rich_metadata=False):
+    if rich_metadata:
+        # EPUB 3.3 合法：span 分组标题（无 href）+ 嵌套 ol，hidden 空值分支。
+        items = "\n".join(f'<li><a href="{c}.xhtml">{t}</a></li>' for c, t in chapters)
+        c0 = chapters[0][0] if chapters else "ch1"
+        body = (
+            '<li><span>分组：样例章</span>\n<ol>\n'
+            + items
+            + f'\n<li hidden=""><a href="{c0}.xhtml">隐藏分支</a></li>'
+            + "\n</ol></li>"
+        )
+    else:
+        body = "\n".join(f'<li><a href="{c}.xhtml">{t}</a></li>' for c, t in chapters)
     return (
         '<?xml version="1.0" encoding="utf-8"?>\n'
         '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">\n'
         "<head><title>目录</title></head>\n<body>\n"
         '<nav epub:type="toc" id="toc">\n<h1>目录</h1>\n<ol>\n'
-        + items
+        + body
         + "\n</ol>\n</nav>\n</body>\n</html>\n"
     )
 
@@ -152,7 +179,7 @@ def specs():
     base = dict(
         title="MoonRead 样例", creator="MOONBIT", lang="zh", chapters=two,
         epub3=True, with_nav=True, with_ncx=False, with_css=True, with_cover=False,
-        broken_idref=False,
+        broken_idref=False, rich_metadata=False,
     )
     out = []
 
@@ -176,6 +203,7 @@ def specs():
     add("missing-creator-lang", creator="", lang="")
     add("no-container", with_nav=True)
     add("malformed-opf", with_nav=True)
+    add("rich-metadata", title="Rich Metadata Sample", rich_metadata=True)
     return out
 
 
@@ -207,7 +235,7 @@ def write_epub(path: Path, name: str, s, *, omit_container=False, mimetype_last=
             )
         z.writestr("OEBPS/content.opf", opf_body)
         if s["with_nav"] and not malformed:
-            z.writestr("OEBPS/nav.xhtml", nav_xhtml(chapters))
+            z.writestr("OEBPS/nav.xhtml", nav_xhtml(chapters, s.get("rich_metadata", False)))
         if s["with_ncx"] and not malformed:
             z.writestr("OEBPS/toc.ncx", ncx_xml(title, chapters))
         for cid, t in chapters:
@@ -234,6 +262,9 @@ def expect_for(name, s):
     if s["with_cover"]:
         res += 1
     toc = len(chapters) if s["with_nav"] or s["with_ncx"] else 0
+    if name == "rich-metadata":
+        # nav: 1 个 span 分组 + N 章 + 1 个 hidden 分支。
+        toc = 1 + len(chapters) + 1
     broken = name == "malformed-opf"
     return {
         # 内核会解码 XML 实体；损坏 OPF 打不开，标题为空。

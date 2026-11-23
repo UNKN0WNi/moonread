@@ -10,7 +10,10 @@
 | `mimetype` 首位、ZIP 条目读取 | ✅ | `src/zipio`、`src/container` |
 | `META-INF/container.xml` | ✅ | `src/epub/parse.mbt` |
 | OPF 2.0 / 3.0 `manifest` / `spine` / `metadata` | ✅ | `src/epub/parse.mbt` |
+| 多个 `dc:title` + `xml:lang`（合法多语言/分部标题） | ✅ 全保留 | `src/epub/parse.mbt`、`Metadata.titles` |
+| `<meta refines>` 角色/别名/file-as/identifier-type | ✅ 全保留 | `Metadata.refines`、`refine`/`refine_all` |
 | `nav` 目录 | ✅ | `src/epub/parse.mbt` |
+| nav `span` 分组标题 / `hidden` 分支 | ✅ 语义保留 | `NavPoint.is_group` / `hidden` |
 | NCX 目录（EPUB2） | ✅ | `src/epub/parse.mbt` |
 | 章节 XHTML 读取 | ✅ | `src/epub/open.mbt` |
 | 资源相对路径 / URL 编码 / base64 | ✅ | `src/resource` |
@@ -34,13 +37,16 @@
 
 ## 3. 测试语料
 
-`tools/gen_fixtures.py` 生成 15 本最小 EPUB，覆盖：
+`tools/gen_fixtures.py` 生成 16 本最小 EPUB，覆盖：
 
 - EPUB2 + NCX / EPUB3 + nav / 双目录 / 无目录；
 - 零章节 / 三十章节；
 - mimetype 位置异常 / 坏 idref / 重复 id；
 - 加密声明 / 封面 / 无 CSS / 实体标题；
-- 缺 creator / language / container / OPF 畸形。
+- 缺 creator / language / container / OPF 畸形；
+- **rich-metadata**：多 `dc:title` + `xml:lang`、`meta refines` 角色/别名/file-as、nav `span` 分组与 `hidden` 分支（合法 EPUB 3.3 语义不丢失的回归样例）。
+
+规范条款与合法输入/预期结果的逐条对照见 [EPUB-CONFORMANCE.md](EPUB-CONFORMANCE.md)。
 
 清单在 `tests/fixtures/manifest.json`。用下面命令检查：
 

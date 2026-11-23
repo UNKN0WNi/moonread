@@ -225,15 +225,68 @@ fn parse_metadata(
 ) -> Metadata {
   let md = empty_metadata()
   let cover_id : Array[String] = []
+  // 先收集 refines：EPUB 3.3 允许 <meta refines> 出现在被修饰元素之前或之后，
+  // 因此必须先把修饰关系建好，再解析 dc: 元素时回填（如 creator 的 role）。
+  for c in @xml.child_elements(el) {
+    if @util.ascii_lower(@xml.local_name(c.tag)) != "meta" {
+      continue
+    }
+    let ref_raw = @util.trim(@xml.attr_or_empty(c, "refines"))
+    if ref_raw.length() == 0 {
+      continue
+    }
+    let target = if @util.starts_with(ref_raw, "#") {
+      @util.slice_string(ref_raw, 1, @util.to_chars(ref_raw).length())
+    } else {
+      ref_raw
+    }
+    md.refines.push(RefineInfo::{
+      target,
+      property: @util.ascii_lower(@xml.attr_or_empty(c, "property")),
+      value: @util.trim(@xml.text_content(c)),
+      scheme: @util.ascii_lower(@xml.attr_or_empty(c, "scheme")),
+      lang: @util.trim(@xml.attr_or_empty(c, "lang")),
+    })
+  }
+  // package/@xml:lang 是所有未标注元素的默认语言（EPUB 3.3 xml:lang 条）。
+  let default_lang = @util.trim(@xml.attr_or_empty(el, "lang"))
   for c in @xml.child_elements(el) {
     let name = @util.ascii_lower(@xml.local_name(c.tag))
-    if name == "title" && md.title.length() == 0 {
-      md.title = @util.trim(@xml.text_content(c))
+    if name == "title" {
+      let value = @util.trim(@xml.text_content(c))
+      let lang = @util.trim(@xml.attr_or_empty(c, "lang"))
+      md.titles.push(TitleInfo::{
+        value,
+        lang: if lang.length() == 0 {
+          default_lang
+        } else {
+          lang
+        },
+        id: @util.trim(@xml.attr_or_empty(c, "id")),
+      })
+      // 主标题仍是文档顺序首个，保持既有 `title` 字段语义不变。
+      if md.title.length() == 0 {
+        md.title = value
+      }
     } else if name == "creator" {
       let cname = @util.trim(@xml.text_content(c))
       if cname.length() > 0 {
-        let role = @util.ascii_lower(@xml.attr_or_empty(c, "role"))
-        let r = if role.length() == 0 { "aut" } else { role }
+        let cid = @util.trim(@xml.attr_or_empty(c, "id"))
+        // EPUB2 用 opf:role 属性；EPUB3 用 <meta refines="#id" property="role">。
+        // 后者优先，才不会把插画师/译者误当作者。
+        let inline_role = @util.ascii_lower(@xml.attr_or_empty(c, "role"))
+        let refined_role = if cid.length() == 0 {
+          ""
+        } else {
+          refine(md, cid, "role")
+        }
+        let r = if refined_role.length() > 0 {
+          @util.ascii_lower(refined_role)
+        } else if inline_role.length() > 0 {
+          inline_role
+        } else {
+          "aut"
+        }
         md.creators.push((cname, r))
       }
     } else if name == "contributor" {
@@ -632,13 +685,17 @@ fn parse_nav_list(
     if !@xml.tag_is(li, "li") {
       continue
     }
-    let hidden = @util.ascii_lower(@xml.attr_or_empty(li, "hidden"))
-    if hidden == "true" || hidden == "hidden" {
-      continue
-    }
+    // HTML hidden 是布尔属性：出现即为真，包括 `hidden` / `hidden=""` /
+    // `hidden="hidden"`。EPUB 3.3 允许用它把仅供机器处理的分支藏起来。
+    let is_hidden = @xml.get_attr(li, "hidden") != None
+    // 内容模型：li 的首个子元素是 (span|a)[exactly 1]，之后可选一个 ol。
+    // span 是分组标题（无 href），不能像旧实现那样丢掉它的文字。
     let mut point : NavPoint? = None
     for child in @xml.child_elements(li) {
-      if @xml.tag_is(child, "a") && point == None {
+      if point != None {
+        break
+      }
+      if @xml.tag_is(child, "a") {
         let href = lower_attr_to_raw(@xml.attr_ci(child, "href"))
         let label = @util.trim(@xml.text_content(child))
         let r = @resource.resolve(base, href)
@@ -648,6 +705,18 @@ fn parse_nav_list(
           path,
           fragment: @resource.fragment(href),
           children: [],
+          is_group: false,
+          hidden: is_hidden,
+        })
+      } else if @xml.tag_is(child, "span") {
+        // span 分组标题：文字保留为 label，path 为空，is_group 标记供 UI 区分。
+        point = Some(NavPoint::{
+          label: @util.trim(@xml.text_content(child)),
+          path: "",
+          fragment: "",
+          children: [],
+          is_group: true,
+          hidden: is_hidden,
         })
       }
     }
@@ -660,11 +729,13 @@ fn parse_nav_list(
           path: p.path,
           fragment: p.fragment,
           children: kids,
+          is_group: p.is_group,
+          hidden: p.hidden,
         })
       }
       (Some(p), None) => out.push(p)
       (None, Some(list2)) =>
-        // 没有链接的分组容器：把子项提升到当前层级
+        // 没有首元素（脏数据）但有子列表：把子项提升到当前层级。
         for k in parse_nav_list(base, list2, warnings) {
           out.push(k)
         }
@@ -739,6 +810,8 @@ fn parse_navmap(
       path,
       fragment: @resource.fragment(src),
       children: kids,
+      is_group: false,
+      hidden: false,
     })
   }
   out

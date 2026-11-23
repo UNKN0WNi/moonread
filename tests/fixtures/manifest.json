@@ -184,6 +184,18 @@
         "toc_items": 0,
         "resources": 0
       }
+    },
+    {
+      "file": "epub/rich-metadata.epub",
+      "name": "rich-metadata",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "Rich Metadata Sample",
+        "chapters": 2,
+        "toc_items": 4,
+        "resources": 4
+      }
     }
   ]
 }

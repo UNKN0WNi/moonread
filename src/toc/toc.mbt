@@ -15,6 +15,10 @@ pub(all) struct TocItem {
   /// 深度优先展开后的序号。
   ordinal : Int32
   children : Array[TocItem]
+  /// EPUB3 nav 的 `span` 分组标题（无跳转目标）。
+  is_group : Bool
+  /// HTML hidden 布尔属性（仅供机器处理的分支）。
+  hidden : Bool
 }
 
 ///|
@@ -43,6 +47,8 @@ fn flatten(
       level,
       ordinal: ord,
       children: flatten(p.children, level + 1, counter),
+      is_group: p.is_group,
+      hidden: p.hidden,
     })
   }
   out
@@ -94,6 +100,8 @@ pub fn from_spine(b : @epub.EpubBook) -> Array[TocItem] {
       level: 0,
       ordinal: ord,
       children: [],
+      is_group: false,
+      hidden: false,
     })
     ord = ord + 1
   }

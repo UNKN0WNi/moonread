@@ -314,6 +314,106 @@ test "guide 解析（EPUB2 遗留）" {
 }
 
 ///|
+/// 以下测试对应复审要求「合法输入与预期解析结果」。
+/// 输入是符合 EPUB 3.3 的合法结构，断言语义不丢失。
+test "EPUB3 多 dc:title：主标题仍取首个，全部标题与 xml:lang 保留" {
+  let b = open_fixture("rich-metadata")
+  assert_true(
+    b.metadata.titles.length() == 2,
+    msg="两个 dc:title：" + b.metadata.titles.length().to_string(),
+  )
+  assert_true(
+    @epub.main_title(b.metadata) == "Rich Metadata Sample",
+    msg="主标题=首个 dc:title，符合 EPUB 3.3",
+  )
+  assert_true(b.metadata.title == "Rich Metadata Sample", msg="旧字段兼容")
+  assert_true(
+    b.metadata.titles[0].lang == "en",
+    msg="首标题 xml:lang：" + b.metadata.titles[0].lang,
+  )
+  assert_true(
+    b.metadata.titles[1].value == "副題サンプル",
+    msg="别名标题未被丢弃：" + b.metadata.titles[1].value,
+  )
+  assert_true(
+    b.metadata.titles[1].lang == "ja",
+    msg="别名语言：" + b.metadata.titles[1].lang,
+  )
+  assert_true(
+    b.metadata.titles[1].id == "title-alt",
+    msg="标题 id 保留供 refines 关联",
+  )
+}
+
+///|
+test "EPUB3 meta refines：角色/别名/file-as 不再丢失" {
+  let b = open_fixture("rich-metadata")
+  // 首位作者仍是主作者（文档顺序首个 dc:creator）。
+  assert_true(
+    @epub.primary_creator(b.metadata) == "MOONBIT",
+    msg="主作者=首个 dc:creator",
+  )
+  // refines 的 role 覆盖：插画师不能被当成作者角色 aut。
+  assert_true(
+    b.metadata.creators[1].1 == "ill",
+    msg="插画师角色：" + b.metadata.creators[1].1,
+  )
+  assert_true(
+    @epub.refine(b.metadata, "creator-main", "role") == "aut",
+    msg="主作者 role refines",
+  )
+  assert_true(
+    @epub.refine(b.metadata, "creator-main", "alternate-script") ==
+    "著者サンプル",
+    msg="作者别名保留：",
+  )
+  let alt_scripts = @epub.refine_all(
+    b.metadata,
+    "creator-main",
+    "alternate-script",
+  )
+  assert_true(alt_scripts.length() == 1, msg="别名 refinement 数量")
+  assert_true(
+    alt_scripts[0].lang == "ja",
+    msg="别名 xml:lang 保留：" + alt_scripts[0].lang,
+  )
+  assert_true(
+    @epub.refine(b.metadata, "creator-main", "file-as") == "MOONBIT,",
+    msg="file-as 保留（值按元数据惯例 trim）",
+  )
+}
+
+///|
+test "EPUB3 nav：span 分组标题与 hidden 空布尔值语义不丢失" {
+  let b = open_fixture("rich-metadata")
+  assert_true(b.nav_toc.length() == 1, msg="顶层一个分组节点")
+  let group = b.nav_toc[0]
+  assert_true(group.is_group, msg="span 节点标记为分组")
+  assert_true(
+    group.label == "分组：样例章",
+    msg="分组标题文字保留：" + group.label,
+  )
+  assert_true(group.path == "", msg="分组无跳转目标")
+  // 分组内：2 章 + 1 个 hidden 分支。
+  assert_true(group.children.length() == 3, msg="组内三项")
+  assert_true(!group.children[0].hidden, msg="普通章不隐藏")
+  assert_true(group.children[2].hidden, msg="hidden=\"\" 被识别为隐藏")
+  assert_true(
+    group.children[2].label == "隐藏分支",
+    msg="隐藏分支文字仍保留（不丢弃语义）",
+  )
+}
+
+///|
+test "EPUB3 富语义书不产生告警（合法输入）" {
+  let b = open_fixture("rich-metadata")
+  assert_true(
+    b.warnings.length() == 0,
+    msg="合法书不应降级：" + @epub.report(b),
+  )
+}
+
+///|
 fn opf_with_guide() -> String {
   @util.join_nl([
     "<?xml version=\"1.0\" encoding=\"utf-8\"?>", "<package version=\"2.0\" unique-identifier=\"uid\">",

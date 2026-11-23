@@ -28,6 +28,9 @@ pub(all) struct FixtureSpec {
   mut malformed_opf : Bool
   /// true 时写入 META-INF/encryption.xml（测试 DRM 检测）。
   mut encrypted : Bool
+  /// true 时写合法 EPUB3 富语义元数据：多 dc:title + xml:lang、
+  /// `<meta refines>` 角色/别名、nav 的 span 分组与 hidden 分支。
+  mut rich_metadata : Bool
 }
 
 ///|
@@ -47,6 +50,7 @@ pub fn simple_spec() -> FixtureSpec {
     broken_idref: false,
     malformed_opf: false,
     encrypted: false,
+    rich_metadata: false,
   }
 }
 
@@ -86,8 +90,37 @@ fn opf_xml(spec : FixtureSpec) -> String {
   lines.push(
     "    <dc:identifier id=\"uid\">urn:uuid:moonread-sample</dc:identifier>",
   )
-  lines.push("    <dc:title>" + spec.title + "</dc:title>")
-  lines.push("    <dc:creator>" + spec.creator + "</dc:creator>")
+  if spec.rich_metadata {
+    // 合法 EPUB 3.3：首个 dc:title 是主标题；另有带 xml:lang 的别名标题。
+    lines.push(
+      "    <dc:title id=\"title-main\" xml:lang=\"en\">" +
+      spec.title +
+      "</dc:title>",
+    )
+    lines.push(
+      "    <dc:title id=\"title-alt\" xml:lang=\"ja\">副題サンプル</dc:title>",
+    )
+    // 合法 EPUB 3.3：creator 角色用 <meta refines> 表达，而非 opf:role 属性。
+    lines.push(
+      "    <dc:creator id=\"creator-main\">" + spec.creator + "</dc:creator>",
+    )
+    lines.push("    <dc:creator id=\"creator-ill\">Illustrator</dc:creator>")
+    lines.push(
+      "    <meta refines=\"#creator-main\" property=\"role\" scheme=\"marc:relators\">aut</meta>",
+    )
+    lines.push(
+      "    <meta refines=\"#creator-ill\" property=\"role\" scheme=\"marc:relators\">ill</meta>",
+    )
+    lines.push(
+      "    <meta refines=\"#creator-main\" property=\"alternate-script\" xml:lang=\"ja\">著者サンプル</meta>",
+    )
+    lines.push(
+      "    <meta refines=\"#creator-main\" property=\"file-as\">MOONBIT, </meta>",
+    )
+  } else {
+    lines.push("    <dc:title>" + spec.title + "</dc:title>")
+    lines.push("    <dc:creator>" + spec.creator + "</dc:creator>")
+  }
   lines.push("    <dc:language>" + spec.language + "</dc:language>")
   if spec.epub3 {
     lines.push(
@@ -156,8 +189,22 @@ fn nav_xhtml(spec : FixtureSpec) -> String {
   lines.push("<nav epub:type=\"toc\" id=\"toc\">")
   lines.push("<h1>目录</h1>")
   lines.push("<ol>")
+  if spec.rich_metadata {
+    // 合法 EPUB 3.3：span 分组标题（无 href）+ 嵌套 ol；
+    // 组内第二个 ol 带 hidden 空值，隐藏仅供机器处理的分支。
+    lines.push("<li><span>分组：样例章</span>")
+    lines.push("<ol>")
+  }
   for kv in spec.chapters {
     lines.push("<li><a href=\"" + kv.0 + ".xhtml\">" + kv.1 + "</a></li>")
+  }
+  if spec.rich_metadata {
+    lines.push(
+      "<li hidden=\"\"><a href=\"" +
+      (if spec.chapters.length() > 0 { spec.chapters[0].0 } else { "ch1" }) +
+      ".xhtml\">隐藏分支</a></li>",
+    )
+    lines.push("</ol></li>")
   }
   lines.push("</ol>")
   lines.push("</nav>")
@@ -326,5 +373,10 @@ pub fn all_fixtures() -> Array[(String, FixtureSpec)] {
   s15.creator = ""
   s15.language = ""
   out.push(("missing-creator-lang", s15))
+  let s16 = simple_spec()
+  s16.title = "Rich Metadata Sample"
+  s16.creator = "MOONBIT"
+  s16.rich_metadata = true
+  out.push(("rich-metadata", s16))
   out
 }

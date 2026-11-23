@@ -56,6 +56,7 @@ bash scripts/ci.sh              # 全部本地检查
 
 - [架构](docs/ARCHITECTURE.md) — 分层、依赖方向与关键取舍
 - [分页](docs/PAGINATION.md) — 策略、不变式与术语
+- [EPUB 标准符合性声明](docs/EPUB-CONFORMANCE.md) — 支持终点、规范条款与合法输入/预期结果
 - [EPUB 覆盖范围](docs/EPUB-COVERAGE.md) — 支持的能力与边界
 - [渲染后端](docs/RENDER-BACKEND.md) — `Backend::Null` 与 Crater 占位
 - [开发指南](docs/DEV-GUIDE.md) — 包清单约定、命令与配置说明
@@ -65,8 +66,8 @@ bash scripts/ci.sh              # 全部本地检查
 
 本仓库交付的是**阅读内核 + 最小 CLI**，不是完整阅读器应用；桌面壳见 [MoonRead Desktop](https://github.com/UNKN0WNi/moonread-desktop)，Web 壳由宿主提供。DRM / 加密 EPUB 只检测不解密，`Backend::Crater` 尚未接入真实渲染器。
 
-当前验证：四端 `moon check --deny-warn` 零警告、四端各 118 项测试通过、native / js / wasm-gc 输出一致，JSON 校验、`moon prove` 形式化证明，以及 17 本 EPUB（15 本自建 + 2 本真实公版书）的内核对账全部通过。
+当前验证：四端 `moon check --deny-warn` 零警告、四端各 122 项测试通过、native / js / wasm-gc 输出一致，JSON 校验、`moon prove` 形式化证明，以及 18 本 EPUB（16 本自建 + 2 本真实公版书）的内核对账全部通过。
 
 ## License
 
-Apache-2.0。15 本自建语料与 2 本第三方公版 EPUB 的来源、许可与 SHA-256 分别见 `tests/fixtures/manifest.json` 与 `tests/corpus/manifest.json`。
+Apache-2.0。16 本自建语料与 2 本第三方公版 EPUB 的来源、许可与 SHA-256 分别见 `tests/fixtures/manifest.json` 与 `tests/corpus/manifest.json`。
