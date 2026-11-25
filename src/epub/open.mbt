@@ -111,7 +111,7 @@ pub fn open_with(
   }
   // --- 4. NCX（EPUB2） ---
   let ncx_toc : Array[NavPoint] = []
-  let ncx_item = find_ncx_item(opf.manifest)
+  let ncx_item = find_ncx_item(opf.manifest, opf.ncx_id, all_warnings)
   match ncx_item {
     None => ()
     Some(item) =>
@@ -179,16 +179,33 @@ fn find_nav_item(manifest : Array[ManifestItem]) -> ManifestItem? {
 }
 
 ///|
-fn find_ncx_item(manifest : Array[ManifestItem]) -> ManifestItem? {
-  let mut found : ManifestItem? = None
+fn find_ncx_item(
+  manifest : Array[ManifestItem],
+  ncx_id : String,
+  warnings : Array[String],
+) -> ManifestItem? {
+  // OPF 2.0.1：`spine/@toc` 明确指定 NCX 的 manifest id。
+  // 多份 NCX 时按「第一份」猜会取到错误目录。
+  if ncx_id.length() > 0 {
+    for m in manifest {
+      if m.id == ncx_id &&
+        m.resolve_error.length() == 0 &&
+        m.media_type == "application/x-dtbncx+xml" {
+        return Some(m)
+      }
+    }
+    push_warning(
+      warnings,
+      "spine@toc '" + ncx_id + "' 未指向可用的 NCX，退回第一份 NCX",
+    )
+  }
   for m in manifest {
     if m.resolve_error.length() == 0 &&
       m.media_type == "application/x-dtbncx+xml" {
-      found = Some(m)
-      break
+      return Some(m)
     }
   }
-  found
+  None
 }
 
 ///|

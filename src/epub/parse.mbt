@@ -25,6 +25,9 @@ pub(all) struct OpfInfo {
   manifest : Array[ManifestItem]
   spine : Array[SpineItem]
   guide : Array[GuideRef]
+  /// EPUB2/OPF2 的 `spine@toc`：指定 NCX 的 manifest id。
+  /// 多份 NCX 时不能靠「第一份」猜，必须按这个 id 选。
+  ncx_id : String
   package_version : String
   unique_id : String
   warnings : Array[String]
@@ -174,18 +177,22 @@ pub fn parse_opf(
         }
         Some(s) => s
       }
+      // §5.3.7：`package/@xml:lang` 是未标注元素的默认语言，
+      // 而不是 `metadata/@xml:lang`。上一版读错元素，导致合法输入丢语言。
+      let default_lang = @util.trim(@xml.attr_or_empty(root, "lang"))
       let md = parse_metadata(
-        opf_path, metadata_el, manifest_el, unique_id, warnings,
+        opf_path, metadata_el, manifest_el, unique_id, default_lang, warnings,
       )
       let manifest = parse_manifest(opf_path, manifest_el, warnings)
       let spine = parse_spine(spine_el, manifest, warnings)
       md.page_progression_direction = spine_page_direction(spine_el)
-      let guide = parse_guide(root, warnings)
+      let guide = parse_guide(opf_path, root, warnings)
       Ok(OpfInfo::{
         metadata: md,
         manifest,
         spine,
         guide,
+        ncx_id: lower_attr_to_raw(@xml.get_attr(spine_el, "toc")),
         package_version,
         unique_id,
         warnings,
@@ -221,6 +228,7 @@ fn parse_metadata(
   el : @xml.Element,
   manifest_el : @xml.Element,
   unique_id : String,
+  default_lang : String,
   warnings : Array[String],
 ) -> Metadata {
   let md = empty_metadata()
@@ -248,8 +256,7 @@ fn parse_metadata(
       lang: @util.trim(@xml.attr_or_empty(c, "lang")),
     })
   }
-  // package/@xml:lang 是所有未标注元素的默认语言（EPUB 3.3 xml:lang 条）。
-  let default_lang = @util.trim(@xml.attr_or_empty(el, "lang"))
+  // `default_lang` 由 parse_opf 从 package/@xml:lang 取得（见 §5.3.7）。
   for c in @xml.child_elements(el) {
     let name = @util.ascii_lower(@xml.local_name(c.tag))
     if name == "title" {
@@ -326,7 +333,12 @@ fn parse_metadata(
       if prop == "dcterms:modified" && md.modified.length() == 0 {
         md.modified = body
       } else if mname == "cover" {
-        cover_id.push(body)
+        // EPUB2/OPF2 的遗留写法是 `<meta name="cover" content="ITEM-ID"/>`；
+        // 内容不是封面 id，读元素文本会取到空串并让第一张图冒充封面。
+        match @xml.attr_ci(c, "content") {
+          Some(id) => cover_id.push(@util.trim(id))
+          None => ()
+        }
       } else if prop == "rendition:layout" || prop == "rendition:flow" {
         ()
       }
@@ -569,14 +581,18 @@ fn parse_spine(
           resolved: false,
         })
       }
-      Some(it) =>
+      Some(it) => {
+        // §3.5.1 / §5.7.2：外国内容文档必须通过 fallback 链找到
+        // 可渲染的 EPUB 内容文档；否则整章会静默从阅读顺序消失。
+        let content = resolve_spine_content(idref, it, manifest, warnings)
         out.push(SpineItem::{
           idref,
           linear,
-          path: it.path,
-          media_type: it.media_type,
+          path: content.path,
+          media_type: content.media_type,
           resolved: true,
         })
+      }
     }
   }
   if out.length() == 0 {
@@ -586,7 +602,88 @@ fn parse_spine(
 }
 
 ///|
+fn find_manifest_item(
+  manifest : Array[ManifestItem],
+  id : String,
+) -> ManifestItem? {
+  for m in manifest {
+    if m.id == id {
+      return Some(m)
+    }
+  }
+  None
+}
+
+///|
+fn id_seen(ids : Array[String], id : String) -> Bool {
+  for x in ids {
+    if x == id {
+      return true
+    }
+  }
+  false
+}
+
+///|
+/// 沿 manifest 的 `fallback` 链找到第一个 EPUB 内容文档。
+/// 成功与失败都产生告警：合法 fallback 要让上层知道发生了替换，
+/// 无可用 fallback 则不能让条目静默消失。
+fn resolve_spine_content(
+  idref : String,
+  item : ManifestItem,
+  manifest : Array[ManifestItem],
+  warnings : Array[String],
+) -> ManifestItem {
+  if @resource.is_markup_media(item.media_type) {
+    return item
+  }
+  let visited : Array[String] = [item.id]
+  let mut cur = item
+  while !@resource.is_markup_media(cur.media_type) {
+    let mut next : ManifestItem? = None
+    for fid in cur.fallbacks {
+      if !id_seen(visited, fid) {
+        visited.push(fid)
+        match find_manifest_item(manifest, fid) {
+          Some(m) => {
+            next = Some(m)
+            break
+          }
+          None => ()
+        }
+      }
+    }
+    match next {
+      None => {
+        push_warning(
+          warnings,
+          "spine idref '" +
+          idref +
+          "' 的媒体类型 '" +
+          cur.media_type +
+          "' 无可用 fallback，未进入章节列表",
+        )
+        return cur
+      }
+      Some(m) => cur = m
+    }
+  }
+  push_warning(
+    warnings,
+    "spine idref '" +
+    idref +
+    "' 的媒体类型 '" +
+    item.media_type +
+    "' 不是内容文档，已按 fallback '" +
+    cur.id +
+    "' 加入阅读顺序",
+  )
+  cur
+}
+
+///|
 pub fn parse_guide(
+  opf_path : String,
   root : @xml.Element,
   warnings : Array[String],
 ) -> Array[GuideRef] {
@@ -605,13 +702,41 @@ pub fn parse_guide(
           push_warning(warnings, "guide reference 缺少 type，已跳过")
           continue
         }
-        out.push(GuideRef::{ typ, title, path: href, })
+        // guide/reference/@href 与 manifest/@href 一样相对 OPF 解析，
+        // 原样存字符串会让宿主定位不到归档内资源。
+        let path = ref_to_path(
+          @resource.resolve(opf_path, href),
+          "guide reference '" + typ + "'",
+          warnings,
+        )
+        out.push(GuideRef::{ typ, title, path, })
       }
   }
   out
 }
 
 // ---------------- nav.xhtml（EPUB3） ----------------
+
+///|
+/// `epub:type` 是空白分隔的属性值列表（EPUB 3.3 §C.2）。
+/// 只认带 `epub:` 前缀的属性，避免把普通 `type="toc"` 误判为导航语义。
+fn has_epub_type(el : @xml.Element, want : String) -> Bool {
+  for kv in el.attrs {
+    if @util.ascii_lower(kv.0) == "epub:type" {
+      let normalized = @util.replace_all(
+        @util.replace_all(@util.replace_all(kv.1, "\t", " "), "\n", " "),
+        "\r",
+        " ",
+      )
+      for token in @util.split_char(normalized, ' ') {
+        if @util.ascii_lower(token) == want {
+          return true
+        }
+      }
+    }
+  }
+  false
+}
 
 ///|
 /// 解析 EPUB3 nav 文档。找不到 toc nav 时返回空数组并告警，由调用方回退 NCX。
@@ -627,8 +752,9 @@ pub fn parse_nav(
       let toc_candidates : Array[@xml.Element] = []
       for n in @xml.descendants(root) {
         if @xml.tag_is(n, "nav") {
-          let t = lower_attr_to_raw(@xml.attr_ci(n, "type"))
-          if t == "toc" {
+          // §C.2：`epub:type` 是空白分隔的属性值列表，`toc landmarks`
+          // 完全合法；必须按 token 判定，且不能把无前缀的 type 当 epub:type。
+          if has_epub_type(n, "toc") {
             toc_nav = Some(n)
           } else {
             toc_candidates.push(n)

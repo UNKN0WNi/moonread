@@ -263,9 +263,15 @@ pub fn media_type_of(path : String) -> String {
 }
 
 ///|
+/// EPUB 3.3 的「核心媒体类型内容文档」：XHTML 与 SVG。
+/// `image/svg+xml` 可以不经 fallback 直接进 spine（§3.1.3），
+/// 因此它属于阅读顺序可枚举的标记内容，而不是普通封面插图。
 pub fn is_markup_media(mt : String) -> Bool {
   let s = @util.ascii_lower(mt)
-  s == "application/xhtml+xml" || s == "text/html" || s == "text/xhtml"
+  s == "application/xhtml+xml" ||
+  s == "text/html" ||
+  s == "text/xhtml" ||
+  s == "image/svg+xml"
 }
 
 ///|

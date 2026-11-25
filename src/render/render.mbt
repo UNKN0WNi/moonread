@@ -189,25 +189,47 @@ fn collect_leaf_blocks(
     return
   }
   let mut idx = 0
+  let mut text_idx = 0
+  let mut pending = ""
   for c in el.children {
     match c {
-      @xml.EText(t) => {
-        let trimmed = @util.trim(t)
-        if trimmed.length() > 0 && !is_block_tag(el.tag) {
-          // 容器元素里的裸文本：按一个匿名文本块计入，避免内容丢失。
-          // 文本不占元素序号，与 rules/render 共用的编号规则保持一致。
-          out.push(MeasuredBlock::{
-            path: @xml.child_path(my_path, "#text", idx),
-            block: text_block_of("#text", trimmed, chars_per_line, line_height),
-          })
+      @xml.EText(t) =>
+        // 块容器里「块子节点之前/之后」的裸文本同样可见（HTML5 混合内容）。
+        // 旧实现要求 !is_block_tag(el.tag)，会让 div 中的裸文本彻底没有度量块。
+        if @util.trim(t).length() > 0 {
+          pending = pending + t
         }
-      }
       @xml.EElement(child) => {
+        flush_text(pending, my_path, text_idx, out, chars_per_line, line_height)
+        if @util.trim(pending).length() > 0 {
+          text_idx = text_idx + 1
+        }
+        pending = ""
         let cp = @xml.child_path(my_path, child.tag, idx)
         idx = idx + 1
         collect_leaf_blocks(child, cp, out, chars_per_line, line_height)
       }
     }
+  }
+  flush_text(pending, my_path, text_idx, out, chars_per_line, line_height)
+}
+
+///|
+fn flush_text(
+  raw : String,
+  parent_path : String,
+  text_idx : Int32,
+  out : Array[MeasuredBlock],
+  chars_per_line : Int32,
+  line_height : Double,
+) -> Unit {
+  let trimmed = @util.trim(raw)
+  if trimmed.length() > 0 {
+    let path = @xml.child_path(parent_path, "#text", text_idx)
+    out.push(MeasuredBlock::{
+      path,
+      block: text_block_of(path, trimmed, chars_per_line, line_height),
+    })
   }
 }
 

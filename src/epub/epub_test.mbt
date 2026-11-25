@@ -302,12 +302,12 @@ test "guide 解析（EPUB2 遗留）" {
     Err(_) => panic()
     Ok(root) => {
       let warnings : Array[String] = []
-      let g = @epub.parse_guide(root, warnings)
+      let g = @epub.parse_guide("OEBPS/content.opf", root, warnings)
       assert_true(g.length() == 2, msg="两条 guide reference")
       assert_true(g[0].typ == "toc", msg="type")
       assert_true(
-        g[0].path == "nav.xhtml",
-        msg="href 原样保留，由上层解析",
+        g[0].path == "OEBPS/nav.xhtml",
+        msg="guide href 按 OPF 路径解析：" + g[0].path,
       )
     }
   }
@@ -431,6 +431,160 @@ test "EPUB3 富语义书不产生告警（合法输入）" {
     b.warnings.length() == 0,
     msg="合法书不应降级：" + @epub.report(b),
   )
+}
+
+///|
+/// 审查 P0-1：foreign content document 的 fallback 链必须进入阅读顺序，
+/// 且替换要可见（告警），不能静默丢章。
+test "fallback 链：外国内容文档按 fallback 加入章节并告警" {
+  let opf = @util.join_nl([
+    "<?xml version=\"1.0\"?>", "<package version=\"3.0\" unique-identifier=\"uid\">",
+    "  <metadata><dc:title xmlns:dc=\"http://purl.org/dc/elements/1.1/\">T</dc:title></metadata>",
+    "  <manifest>", "    <item id=\"ch1\" href=\"ch1.xhtml\" media-type=\"application/xhtml+xml\"/>",
+    "    <item id=\"foreign\" href=\"foreign.jpg\" media-type=\"image/jpeg\" fallback=\"ch1\"/>",
+    "  </manifest>", "  <spine><itemref idref=\"ch1\"/><itemref idref=\"foreign\"/></spine>",
+    "</package>",
+  ])
+  let a = @container.archive("fallback.epub", [
+    ("mimetype", "application/epub+zip"),
+    (
+      "META-INF/container.xml", "<?xml version=\"1.0\"?><container version=\"1.0\"><rootfiles><rootfile full-path=\"OEBPS/content.opf\" media-type=\"application/oebps-package+xml\"/></rootfiles></container>",
+    ),
+    ("OEBPS/content.opf", opf),
+  ])
+  match @epub.open(a) {
+    Err(_) => panic()
+    Ok(book) => {
+      assert_true(
+        @epub.chapter_paths(book).length() == 2,
+        msg="fallback 章节不能消失",
+      )
+      assert_true(
+        @epub.chapter_paths(book)[1] == "OEBPS/ch1.xhtml",
+        msg="foreign 指向 fallback 的 XHTML",
+      )
+      assert_true(
+        warning_count(book, "fallback") == 1,
+        msg="fallback 替换必须告警",
+      )
+    }
+  }
+}
+
+///|
+/// 审查 P0-2：`image/svg+xml` 是 EPUB 3.3 核心内容文档，可直接进 spine。
+test "SVG 内容文档直接进入阅读顺序" {
+  let opf = @util.join_nl([
+    "<?xml version=\"1.0\"?>", "<package version=\"3.0\" unique-identifier=\"uid\">",
+    "  <metadata><dc:title xmlns:dc=\"http://purl.org/dc/elements/1.1/\">T</dc:title></metadata>",
+    "  <manifest>", "    <item id=\"svg\" href=\"page.svg\" media-type=\"image/svg+xml\"/>",
+    "  </manifest>", "  <spine><itemref idref=\"svg\"/></spine>", "</package>",
+  ])
+  match @epub.parse_opf("OEBPS/content.opf", opf, false) {
+    Err(_) => panic()
+    Ok(info) => {
+      assert_true(info.spine.length() == 1, msg="spine 一项")
+      assert_true(
+        @resource.is_markup_media(info.spine[0].media_type),
+        msg="SVG 属于内容文档",
+      )
+    }
+  }
+}
+
+///|
+/// 审查 P1-3：§C.2 把 epub:type 定义为空白分隔列表。
+test "epub:type=\"toc landmarks\" 命中目录而不是地标" {
+  let nav = @util.join_nl([
+    "<?xml version=\"1.0\"?>", "<html xmlns:epub=\"http://www.idpf.org/2007/ops\">",
+    "<body>", "<nav epub:type=\"landmarks\"><ol><li><a href=\"a.xhtml\">地标项</a></li></ol></nav>",
+    "<nav epub:type=\"toc landmarks\"><ol><li><a href=\"b.xhtml\">目录项</a></li></ol></nav>",
+    "</body></html>",
+  ])
+  match @epub.parse_nav("OEBPS/nav.xhtml", nav) {
+    Err(_) => panic()
+    Ok((points, _)) => {
+      assert_true(points.length() == 1, msg="一项目录")
+      assert_true(
+        points[0].label == "目录项",
+        msg="多值 token 命中：" + points[0].label,
+      )
+    }
+  }
+}
+
+///|
+/// 审查 P1-4：EPUB2 遗留封面读 `meta@content`，不是元素文本。
+test "EPUB2 封面：meta name=cover content=ITEM-ID 不被第一张图冒充" {
+  let opf = @util.join_nl([
+    "<?xml version=\"1.0\"?>", "<package version=\"2.0\" unique-identifier=\"uid\">",
+    "  <metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">", "    <dc:title>T</dc:title>",
+    "    <meta name=\"cover\" content=\"cover-img\"/>", "  </metadata>", "  <manifest>",
+    "    <item id=\"other-img\" href=\"other.png\" media-type=\"image/png\"/>", "    <item id=\"cover-img\" href=\"cover.png\" media-type=\"image/png\"/>",
+    "  </manifest>", "  <spine><itemref idref=\"ch1\"/></spine>", "</package>",
+  ])
+  match @epub.parse_opf("OEBPS/content.opf", opf, false) {
+    Err(_) => panic()
+    Ok(info) =>
+      assert_true(
+        info.metadata.cover_path == "OEBPS/cover.png",
+        msg="封面路径：" + info.metadata.cover_path,
+      )
+  }
+}
+
+///|
+/// 审查 P1-5：`package/@xml:lang` 才是默认语言，不是 metadata 元素的 lang。
+test "package@xml:lang 作为 dc:title 的默认语言" {
+  let opf = @util.join_nl([
+    "<?xml version=\"1.0\"?>", "<package version=\"3.0\" xml:lang=\"zh-Hant\" unique-identifier=\"uid\">",
+    "  <metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">", "    <dc:title>繁体标题</dc:title>",
+    "  </metadata>", "  <manifest/>", "  <spine/>", "</package>",
+  ])
+  match @epub.parse_opf("OEBPS/content.opf", opf, false) {
+    Err(_) => panic()
+    Ok(info) =>
+      assert_true(
+        info.metadata.titles[0].lang == "zh-Hant",
+        msg="默认语言：" + info.metadata.titles[0].lang,
+      )
+  }
+}
+
+///|
+/// 审查 P1-7：多份 NCX 时必须按 `spine/@toc` 选，不能取第一份。
+test "EPUB2 spine@toc 指定正确的 NCX" {
+  let items = [
+    ("mimetype", "application/epub+zip"),
+    (
+      "META-INF/container.xml", "<?xml version=\"1.0\"?><container version=\"1.0\"><rootfiles><rootfile full-path=\"OEBPS/content.opf\" media-type=\"application/oebps-package+xml\"/></rootfiles></container>",
+    ),
+    (
+      "OEBPS/content.opf",
+      @util.join_nl([
+        "<?xml version=\"1.0\"?>", "<package version=\"2.0\" unique-identifier=\"uid\">",
+        "  <metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><dc:title>T</dc:title></metadata>",
+        "  <manifest>", "    <item id=\"ncxA\" href=\"a.ncx\" media-type=\"application/x-dtbncx+xml\"/>",
+        "    <item id=\"ncxB\" href=\"b.ncx\" media-type=\"application/x-dtbncx+xml\"/>",
+        "  </manifest>", "  <spine toc=\"ncxB\"><itemref idref=\"ncxA\" linear=\"no\"/></spine>",
+        "</package>",
+      ]),
+    ),
+    (
+      "OEBPS/a.ncx", "<?xml version=\"1.0\"?><ncx><navMap><navPoint><navLabel><text>甲目录</text></navLabel><content src=\"a.xhtml\"/></navPoint></navMap></ncx>",
+    ),
+    (
+      "OEBPS/b.ncx", "<?xml version=\"1.0\"?><ncx><navMap><navPoint><navLabel><text>乙目录</text></navLabel><content src=\"b.xhtml\"/></navPoint></navMap></ncx>",
+    ),
+  ]
+  match @epub.open(@container.archive("two-ncx.epub", items)) {
+    Err(_) => panic()
+    Ok(b) =>
+      assert_true(
+        b.ncx_toc.length() == 1 && b.ncx_toc[0].label == "乙目录",
+        msg="按 spine@toc 选 NCX",
+      )
+  }
 }
 
 ///|

@@ -58,7 +58,7 @@ pub fn open_with(@container.Archive, Bool) -> Result[EpubBook, String]
 
 pub fn parse_container(String, Bool) -> Result[ContainerInfo, String]
 
-pub fn parse_guide(@xml.Element, Array[String]) -> Array[GuideRef]
+pub fn parse_guide(String, @xml.Element, Array[String]) -> Array[GuideRef]
 
 pub fn parse_nav(String, String) -> Result[(Array[NavPoint], Array[String]), String]
 
@@ -190,6 +190,7 @@ pub(all) struct OpfInfo {
   manifest : Array[ManifestItem]
   spine : Array[SpineItem]
   guide : Array[GuideRef]
+  ncx_id : String
   package_version : String
   unique_id : String
   warnings : Array[String]

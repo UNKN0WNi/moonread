@@ -44,6 +44,38 @@ test "整章中文的行数不再低估一半" {
 }
 
 ///|
+/// HTML5 混合内容：块容器里块子节点前后的裸文本必须各自成为度量块。
+test "块容器内的裸文本不再丢失" {
+  let doc = @xml.parse_document(
+    "<html><body><div>段前文字<p>块内段落</p>段后文字</div></body></html>",
+  )
+  match doc {
+    Err(_) => panic()
+    Ok(root) =>
+      match
+        @render.measure(@render.Null, @render.RenderRequest::{
+          doc: root,
+          viewport_width: 400.0,
+          line_height: 20.0,
+          font_size_px: 16.0,
+          avg_char_width_ratio: 0.5,
+        }) {
+        Err(_) => panic()
+        Ok(blocks) => {
+          assert_true(blocks.length() == 3, msg="应有 3 个度量块")
+          let mut text_blocks = 0
+          for b in blocks {
+            if @util.contains(b.path, "#text") {
+              text_blocks = text_blocks + 1
+            }
+          }
+          assert_true(text_blocks == 2, msg="段前/段后各一个文本块")
+        }
+      }
+  }
+}
+
+///|
 test "混合文本按累计宽度折行，空串仍占一行" {
   assert_true(@render.lines_of("", 40) == 1, msg="空串 1 行")
   assert_true(@render.lines_of("a中b", 40) == 1, msg="短混合 1 行")
