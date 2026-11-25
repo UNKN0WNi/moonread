@@ -346,6 +346,26 @@ test "EPUB3 多 dc:title：主标题仍取首个，全部标题与 xml:lang 保�
 }
 
 ///|
+/// EPUB 3.3「XML conformance」：DOCTYPE 内部实体是合法输入，
+/// 标题文本与 xml:lang 属性引用内部实体必须按语义展开，不得丢弃。
+test "EPUB3 内部实体标题与命名空间属性：合法输入语义不丢失" {
+  let b = open_fixture("internal-entities")
+  assert_true(
+    b.metadata.title == "内部实体书名：月亮与六便士",
+    msg="标题由 &book.title; 展开：" + b.metadata.title,
+  )
+  assert_true(
+    b.metadata.titles[0].lang == "zh",
+    msg="xml:lang 由 &book.lang; 展开：" + b.metadata.titles[0].lang,
+  )
+  // dc:title 带命名空间前缀，按 local name 命中，且实体展开发生在命名空间元素内
+  assert_true(
+    @epub.main_title(b.metadata) == "内部实体书名：月亮与六便士",
+    msg="主标题保持规范语义",
+  )
+}
+
+///|
 test "EPUB3 meta refines：角色/别名/file-as 不再丢失" {
   let b = open_fixture("rich-metadata")
   // 首位作者仍是主作者（文档顺序首个 dc:creator）。

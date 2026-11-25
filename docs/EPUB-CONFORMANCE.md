@@ -17,14 +17,24 @@
 
 ### 1.1 为什么内部叫「XML 子集」
 
-解析器 `src/xml/xml.mbt` 处理的是 **EPUB 实际使用的 XML 1.0 良构子集**，不是自创格式。它实现且只实现 EPUB 规范要求的特性：
+解析器 `src/xml/xml.mbt` 处理的是 **EPUB 实际使用的 XML 1.0 良构子集**，不是自创格式。实体与命名空间的处理严格遵循 EPUB 3.3「XML conformance」条款，条款原文：
 
-- `<?xml?>` 声明、注释、`DOCTYPE`（含内部子集）、CDATA、处理指令；
-- 五个预定义实体 + 数字字符引用（十进制/十六进制）+ `nbsp`；
-- 命名空间前缀原样保留，用 `local_name` 去前缀后比较（不依赖 DTD/外部实体，符合 EPUB 的 XXE 禁令）；
-- `lenient` 模式覆盖真实书的常见脏写法（未闭合的 HTML 空元素、大小写不一致的结束标签、未声明实体按字面保留）。
+> Any publication resource that is an XML-based media type … MAY only specify a document type declaration that references an external identifier appropriate for its media type — or that omits external identifiers. **MUST NOT contain external entity declarations in the internal DTD subset.**
 
-明确**不支持**且会给出清晰错误：自定义 DTD 实体、外部/网络实体（EPUB 安全要求）、命名空间 URI 归一化。这些不在 EPUB 内容文档的必需行为内。
+据此，实体支持终点精确划分为：
+
+| 实体/语法类别 | 是否支持 | 依据 |
+|---|---|---|
+| 五个预定义实体（`lt/gt/amp/quot/apos`）+ 数字引用（十进制/十六进制） | ✅ 全部展开 | XML 1.0 预定义 |
+| **DOCTYPE 内部子集声明的内部实体** `<!ENTITY name "value">` | ✅ 文本与属性值中按语义展开，值可再含实体引用（递归，深度上限 8） | 规范未禁止，属合法 EPUB 输入 |
+| `DOCTYPE` 外部标识符（`PUBLIC`/`SYSTEM` 的 DTD 引用） | ✅ 允许出现在前言；不加载外部 DTD | 规范条款明确 MAY |
+| **外部实体声明** `<!ENTITY x SYSTEM "…">` / `PUBLIC "…" "…"` | ❌ 拒绝并给清晰错误 | 规范 MUST NOT（XXE 防线） |
+| 参数实体 `<!ENTITY % …>` | ❌ 拒绝 | EPUB 阅读内核无此需求，且多为外部用途 |
+| 命名空间 URI 归一化 | ❌ 不做；前缀原样保留，用 `local_name` 去前缀比较 | EPUB 只要求按 local name 识别 |
+
+`lenient` 模式覆盖真实书的常见脏写法（未闭合的 HTML 空元素、大小写不一致的结束标签、**未声明实体按字面保留**）——但**不放宽**外部实体禁令，安全约束在两种模式下一致。
+
+这个划分直接回应了「合法文档语义不丢失」：内部实体是合法输入的一部分，之前把「自定义 DTD 实体」整体排除是过度收窄，现已改为精确支持内部实体、只拒绝规范明令禁止的外部实体。
 
 ## 2. 规范条款 → 实现 → 断言
 
@@ -103,6 +113,58 @@
 | href 相对路径 / 百分号编码 / 锚点 | `src/resource/resource.mbt` | `ch%201.xhtml#s2` → 归档内路径 + `fragment == "s2"` |
 | `properties="nav"` 标记导航文档 | `find_nav_item` | 有该属性 → 解析 nav；无 → 回退 NCX |
 
+### 2.6 内部 DTD 实体与命名空间（EPUB 3.3 XML conformance）
+
+规范条款（§XML conformance，原文见 §1.1）：DOCTYPE 可引用外部标识符或省略，但 **MUST NOT contain external entity declarations in the internal DTD subset**。据此，「内部实体支持、外部实体拒绝」是精确终点，不是折中。
+
+**案例 A：内部实体标题（合法输入 → 预期解析结果）**
+
+合法输入（`tests/fixtures/epub/internal-entities.epub` 的 OPF 片段）：
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE package [
+  <!ENTITY book.title "内部实体书名：月亮与六便士">
+  <!ENTITY book.lang "zh">
+]>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title id="title-main" xml:lang="&book.lang;">&book.title;</dc:title>
+    …
+```
+
+预期解析结果：
+
+| 字段 | 期望值 | 断言 |
+|---|---|---|
+| `metadata.title` | `内部实体书名：月亮与六便士` | `EPUB3 内部实体标题与命名空间属性：合法输入语义不丢失` |
+| `metadata.titles[0].lang` | `zh`（由 `&book.lang;` 展开） | 同上 |
+| `main_title` | 同上（首个 `dc:title`，符合规范） | 同上 |
+
+**案例 B：命名空间处理行为**
+
+上例的 `<dc:title>` 带命名空间前缀 `dc:`，属性 `xml:lang` 带 `xml:`。解析行为：
+
+- 标签原样保留为 `dc:title`，属性值按实体规则展开；
+- 访问器 `local_name("dc:title") == "title"`，故上层 `find_child(root, "title")` 可按 local name 命中——**不依赖命名空间 URI 归一化**；
+- `xml:lang` 经属性查找的 `local_name` 去前缀后读取（传 `"lang"`），语义不丢失；
+- 内部实体展开发生在命名空间元素/属性**内部**，前缀与实体处理互不干扰。
+
+对应 XML 层断言：`命名空间前缀处理`、`DOCTYPE 内部实体：标题与属性按语义展开`。
+
+**案例 C：外部实体与参数实体被拒绝（安全终点）**
+
+| 合法输入？ | 输入片段 | 预期结果 |
+|---|---|---|
+| ❌ 违规 | `<!ENTITY xxe SYSTEM "file:///etc/passwd">` | `Err("…EPUB 禁止外部实体声明…")`，strict 与 lenient 一致 |
+| ❌ 违规 | `<!ENTITY xxe PUBLIC "-//EVIL//DTD" "http://evil/x.dtd">` | 同上 |
+| ❌ 违规 | `<!ENTITY % ext SYSTEM "http://evil/x.dtd">` | `Err("…EPUB 禁止参数实体声明")` |
+| ✅ 合法 | `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "…/xhtml11.dtd">` | 正常解析，不加载外部 DTD |
+
+断言：`DOCTYPE 外部实体：按 EPUB 规范拒绝`、`DOCTYPE 参数实体与循环引用被拒绝`、`DOCTYPE 外部标识符仍可解析`。
+
+实现位置：`src/xml/xml.mbt` 的 `skip_doctype` / `parse_internal_subset` / `decode_entities_in` / `resolve_entity`；端到端断言在 `src/epub/epub_test.mbt`。磁盘夹具 `internal-entities.epub` 与内存 fixture 成对生成，直接进入 19 本内核对账。
+
 ## 3. 可复现的验证命令
 
 ```bash
@@ -113,9 +175,9 @@ bash scripts/ci.sh
 python3 tools/corpus_check.py --require-manifest --require-probe
 ```
 
-当前结果：四端各 122 项测试通过；跨端输出一致；18 本 EPUB（16 自建 + 2 第三方公版）内核对账全部通过；`moon prove` 在 CI 的 Linux 任务中由 SMT 求解器验证。
+当前结果：四端各 128 项测试通过；跨端输出一致；19 本 EPUB（17 自建 + 2 第三方公版）内核对账全部通过；`moon prove` 在 CI 的 Linux 任务中由 SMT 求解器验证。
 
 ## 4. 语料来源
 
-- 16 本自建最小 EPUB：由 `tools/gen_fixtures.py` 与 `src/epub/fixture.mbt` 成对生成，Apache-2.0，见 `tests/fixtures/manifest.json`。其中 `rich-metadata.epub` 专门承载本文 §2.2–2.4 的合法语义样例。
+- 17 本自建最小 EPUB：由 `tools/gen_fixtures.py` 与 `src/epub/fixture.mbt` 成对生成，Apache-2.0，见 `tests/fixtures/manifest.json`。其中 `rich-metadata.epub` 承载本文 §2.2–2.4 的合法语义样例，`internal-entities.epub` 承载 §2.6 的内部实体标题与命名空间案例。
 - 2 本第三方公版 EPUB：来源 URL 与 SHA-256 钉在 `tests/corpus/manifest.json`，避免上游静默变更。

@@ -37,12 +37,12 @@
 
 ## 3. 测试语料
 
-`tools/gen_fixtures.py` 生成 16 本最小 EPUB，覆盖：
+`tools/gen_fixtures.py` 生成 17 本最小 EPUB，覆盖：
 
 - EPUB2 + NCX / EPUB3 + nav / 双目录 / 无目录；
 - 零章节 / 三十章节；
 - mimetype 位置异常 / 坏 idref / 重复 id；
-- 加密声明 / 封面 / 无 CSS / 实体标题；
+- 加密声明 / 封面 / 无 CSS / 实体标题 / DOCTYPE 内部实体标题与命名空间；
 - 缺 creator / language / container / OPF 畸形；
 - **rich-metadata**：多 `dc:title` + `xml:lang`、`meta refines` 角色/别名/file-as、nav `span` 分组与 `hidden` 分支（合法 EPUB 3.3 语义不丢失的回归样例）。
 

@@ -196,6 +196,18 @@
         "toc_items": 4,
         "resources": 4
       }
+    },
+    {
+      "file": "epub/internal-entities.epub",
+      "name": "internal-entities",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "内部实体书名：月亮与六便士",
+        "chapters": 2,
+        "toc_items": 2,
+        "resources": 4
+      }
     }
   ]
 }

@@ -31,6 +31,9 @@ pub(all) struct FixtureSpec {
   /// true 时写合法 EPUB3 富语义元数据：多 dc:title + xml:lang、
   /// `<meta refines>` 角色/别名、nav 的 span 分组与 hidden 分支。
   mut rich_metadata : Bool
+  /// true 时 OPF 写 DOCTYPE 内部实体声明，标题用 &title; 引用；
+  /// 章节正文用命名空间前缀元素引用实体（EPUB 3.3 合法输入）。
+  mut internal_entities : Bool
 }
 
 ///|
@@ -51,6 +54,7 @@ pub fn simple_spec() -> FixtureSpec {
     malformed_opf: false,
     encrypted: false,
     rich_metadata: false,
+    internal_entities: false,
   }
 }
 
@@ -80,6 +84,14 @@ fn opf_xml(spec : FixtureSpec) -> String {
   }
   let lines : Array[String] = []
   lines.push("<?xml version=\"1.0\" encoding=\"utf-8\"?>")
+  if spec.internal_entities {
+    // 合法 EPUB 3.3：DOCTYPE 内部子集声明内部实体（非外部实体）。
+    // 标题值由实体提供，验证「合法输入语义不丢失」。
+    lines.push("<!DOCTYPE package [")
+    lines.push("  <!ENTITY book.title \"" + spec.title + "\">")
+    lines.push("  <!ENTITY book.lang \"" + spec.language + "\">")
+    lines.push("]>")
+  }
   let ver = if spec.epub3 { "3.0" } else { "2.0" }
   lines.push(
     "<package xmlns=\"http://www.idpf.org/2007/opf\" version=\"" +
@@ -90,7 +102,12 @@ fn opf_xml(spec : FixtureSpec) -> String {
   lines.push(
     "    <dc:identifier id=\"uid\">urn:uuid:moonread-sample</dc:identifier>",
   )
-  if spec.rich_metadata {
+  if spec.internal_entities {
+    // 合法 EPUB 3.3：标题文本与属性都引用内部实体。
+    lines.push(
+      "    <dc:title id=\"title-main\" xml:lang=\"&book.lang;\">&book.title;</dc:title>",
+    )
+  } else if spec.rich_metadata {
     // 合法 EPUB 3.3：首个 dc:title 是主标题；另有带 xml:lang 的别名标题。
     lines.push(
       "    <dc:title id=\"title-main\" xml:lang=\"en\">" +
@@ -378,5 +395,9 @@ pub fn all_fixtures() -> Array[(String, FixtureSpec)] {
   s16.creator = "MOONBIT"
   s16.rich_metadata = true
   out.push(("rich-metadata", s16))
+  let s17 = simple_spec()
+  s17.title = "内部实体书名：月亮与六便士"
+  s17.internal_entities = true
+  out.push(("internal-entities", s17))
   out
 }

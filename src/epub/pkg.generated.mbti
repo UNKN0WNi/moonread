@@ -133,6 +133,7 @@ pub(all) struct FixtureSpec {
   mut malformed_opf : Bool
   mut encrypted : Bool
   mut rich_metadata : Bool
+  mut internal_entities : Bool
 }
 
 #derive(Eq, @debug.Debug)

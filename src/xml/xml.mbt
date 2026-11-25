@@ -4,14 +4,17 @@
 /// 首选 `moonbit-community/XMLParser`。本包是**同接口的本地实现**，
 /// 理由写在 `docs/ARCHITECTURE.md` 的「依赖取舍」：
 /// 1. 预研沙箱无法联网取包，主线代码必须能在零外部依赖下编译并跑测试；
-/// 2. EPUB 只需要 XML 1.0 的一个良构子集（无 DTD 实体、无外部实体、无命名空间解析）；
+/// 2. EPUB 只需要 XML 1.0 的一个良构子集（无外部实体、无命名空间 URI 归一化）；
 /// 3. 接口做成 `Element`/`Node` 树 + 纯函数访问器，换实现时只需要替换本包。
 ///
-/// 明确**不支持**（且都以清晰错误返回，不 panic，验收项）：
-/// - DTD 内部子集声明的自定义实体；
-/// - 外部实体与网络实体解析（EPUB 安全要求，禁止 XXE）；
-/// - 命名空间 URI 归一化（保留 `opf:`、`xmlns:epub` 这类前缀原样，
-///   由上层用 `local_name` / 大小写无关比较处理）。
+/// 实体处理遵循 EPUB 3.3「XML conformance」条款：
+/// - 支持 DOCTYPE 内部子集声明的**内部实体**（`<!ENTITY name "value">`），
+///   文本与属性值中按 XML 规则展开——这是合法 EPUB 输入的一部分；
+/// - 拒绝**外部实体**（SYSTEM / PUBLIC，含网络与 file URL），
+///   规范原文「MUST NOT contain external entity declarations in the internal DTD subset」，
+///   防止 XXE；
+/// - 命名空间前缀原样保留（`opf:`、`xmlns:epub` 等），
+///   由上层用 `local_name` / 大小写无关比较处理，不做 URI 归一化。
 ///
 /// `lenient` 模式（已知风险「真实 EPUB 语料比预期脏」的缓解）：
 /// - 未识别的命名实体按字面保留；
@@ -53,6 +56,8 @@ priv struct XP {
   mut pos : Int32
   mut depth : Int32
   opts : ParseOptions
+  /// DOCTYPE 内部子集声明的内部实体：name -> value。外部实体不进表。
+  entities : Array[(String, String)]
 }
 
 ///|
@@ -72,8 +77,17 @@ pub fn parse_document_with(
   text : String,
   opts : ParseOptions,
 ) -> Result[Element, String] {
-  let p = XP::{ src: @util.to_chars(text), pos: 0, depth: 0, opts, }
-  skip_prolog(p)
+  let p = XP::{
+    src: @util.to_chars(text),
+    pos: 0,
+    depth: 0,
+    opts,
+    entities: [],
+  }
+  match skip_prolog(p) {
+    Ok(_) => ()
+    Err(e) => return Err(e)
+  }
   if p.pos >= p.src.length() {
     return Err("文档为空或只有前言")
   }
@@ -81,7 +95,10 @@ pub fn parse_document_with(
     Ok(__try_v_1) => __try_v_1
     Err(__try_e_1) => return Err(__try_e_1)
   }
-  skip_prolog(p)
+  match skip_prolog(p) {
+    Ok(_) => ()
+    Err(e) => return Err(e)
+  }
   if p.pos != p.src.length() {
     return Err(
       "第 " +
@@ -147,7 +164,9 @@ fn skip_ws(p : XP) -> Unit {
 
 ///|
 /// 跳过前言：空白、`<?...?>`、`<!--...-->`、`<!DOCTYPE ...>`（含内部子集）。
-fn skip_prolog(p : XP) -> Unit {
+/// 前言中的语法错误（未闭合、禁止的外部实体）必须原样上抛，
+/// 否则会被后面的根元素解析误报成「期望名称」。
+fn skip_prolog(p : XP) -> Result[Unit, String] {
   let n = p.src.length()
   let mut keep = true
   while keep && p.pos < n {
@@ -155,22 +174,23 @@ fn skip_prolog(p : XP) -> Unit {
     if starts_here(p, "<!--") {
       match skip_until(p, "-->") {
         Ok(_) => ()
-        Err(_) => keep = false
+        Err(e) => return Err(e)
       }
     } else if starts_here(p, "<?") {
       match skip_until(p, "?>") {
         Ok(_) => ()
-        Err(_) => keep = false
+        Err(e) => return Err(e)
       }
     } else if starts_here(p, "<!") {
       match skip_doctype(p) {
         Ok(_) => ()
-        Err(_) => keep = false
+        Err(e) => return Err(e)
       }
     } else {
       keep = false
     }
   }
+  Ok(())
 }
 
 ///|
@@ -197,24 +217,120 @@ fn skip_until(p : XP, term : String) -> Result[Unit, String] {
 }
 
 ///|
-/// `<!DOCTYPE ...>`：需要处理内部子集 `[ ... ]`，其中可能出现 `>`。
+/// `<!DOCTYPE ...>`：处理内部子集 `[ ... ]`（其中可能出现 `>`），
+/// 收集合法内部实体声明；外部实体声明按 EPUB 3.3 规范拒绝。
 fn skip_doctype(p : XP) -> Result[Unit, String] {
   let n = p.src.length()
   let mut i = p.pos + 2
   let mut in_subset = false
+  let mut subset_start = 0
+  let mut subset_end = -1
   while i < n {
     let c = p.src[i]
-    if c == '[' {
+    if c == '[' && !in_subset {
       in_subset = true
-    } else if c == ']' {
+      subset_start = i + 1
+    } else if c == ']' && in_subset {
       in_subset = false
+      subset_end = i
     } else if c == '>' && !in_subset {
+      if subset_start > 0 {
+        match parse_internal_subset(p, subset_start, subset_end) {
+          Err(e) => return Err(e)
+          Ok(_) => ()
+        }
+      }
       p.pos = i + 1
       return Ok(())
     }
     i = i + 1
   }
   Err("第 " + p.pos.to_string() + " 个字符处：DOCTYPE 未闭合")
+}
+
+///|
+/// 解析 DOCTYPE 内部子集中的实体声明。
+/// 合法 `<!ENTITY name "value">` 收集进 `p.entities`，供文本与属性值展开；
+/// `SYSTEM` / `PUBLIC` 外部实体与参数实体按 EPUB 3.3「XML conformance」
+/// 的 MUST NOT 拒绝，返回清晰错误（不 panic）。
+fn parse_internal_subset(
+  p : XP,
+  from : Int32,
+  to : Int32,
+) -> Result[Unit, String] {
+  let marker = @util.to_chars("<!ENTITY")
+  let mut i = from
+  while i < to {
+    if @util.matches_at(p.src, i, marker) {
+      let decl_start = i
+      i = i + marker.length()
+      while i < to && @util.is_xml_space(p.src[i]) {
+        i = i + 1
+      }
+      if i < to && p.src[i] == '%' {
+        return Err(
+          "第 " +
+          decl_start.to_string() +
+          " 个字符处：EPUB 禁止参数实体声明",
+        )
+      }
+      let name_start = i
+      while i < to &&
+            !@util.is_xml_space(p.src[i]) &&
+            p.src[i] != '"' &&
+            p.src[i] != '\'' &&
+            p.src[i] != '>' {
+        i = i + 1
+      }
+      let name = @util.from_chars(@util.slice_chars(p.src, name_start, i))
+      if name.length() == 0 {
+        return Err(
+          "第 " +
+          decl_start.to_string() +
+          " 个字符处：实体声明缺少名称",
+        )
+      }
+      while i < to && @util.is_xml_space(p.src[i]) {
+        i = i + 1
+      }
+      if i >= to {
+        return Err(
+          "第 " +
+          decl_start.to_string() +
+          " 个字符处：实体声明未闭合",
+        )
+      }
+      let c = p.src[i]
+      if c == '"' || c == '\'' {
+        let saved = p.pos
+        p.pos = i + 1
+        let raw = match read_quoted(p, c) {
+          Ok(v) => v
+          Err(e) => return Err(e)
+        }
+        i = p.pos
+        p.pos = saved
+        // 内部实体值本身可含实体引用，按当前表展开（未声明者在严格模式报错）
+        let value = match decode_entities_in(raw, p.opts, p.entities, 1) {
+          Ok(v) => v
+          Err(e) => return Err(e)
+        }
+        p.entities.push((name, value))
+      } else {
+        // SYSTEM / PUBLIC 或其他非引号形式：外部实体，规范禁止
+        return Err(
+          "第 " +
+          decl_start.to_string() +
+          " 个字符处：EPUB 禁止外部实体声明 '" +
+          name +
+          "'（internal DTD subset 不得含 external entity declaration）",
+        )
+      }
+    } else {
+      i = i + 1
+    }
+  }
+  Ok(())
 }
 
 ///|
@@ -319,7 +435,7 @@ fn parse_element(p : XP) -> Result[Element, String] {
           attrs.push(
             (
               name,
-              match decode_entities(raw, p.opts) {
+              match decode_entities_in(raw, p.opts, p.entities, 0) {
                 Ok(__try_v_5) => __try_v_5
                 Err(__try_e_5) => return Err(__try_e_5)
               },
@@ -470,7 +586,7 @@ fn parse_children(
         p.pos = p.pos + 1
       }
       let raw = @util.from_chars(@util.slice_chars(p.src, start, p.pos))
-      let decoded = match decode_entities(raw, p.opts) {
+      let decoded = match decode_entities_in(raw, p.opts, p.entities, 0) {
         Ok(__try_v_8) => __try_v_8
         Err(__try_e_8) => return Err(__try_e_8)
       }
@@ -520,14 +636,29 @@ fn read_quoted(p : XP, quote : Char) -> Result[String, String] {
   Err("第 " + p.pos.to_string() + " 个字符处：属性值引号未闭合")
 }
 
-///| 实体引用解码。支持五个预定义实体与数字引用；未知命名实体在 lenient
-
 ///|
-/// 模式下按字面保留，严格模式下报错。外部实体（`&xxx;` 由 DTD 定义）一律拒绝。
+/// 实体引用解码（公开入口，无内部实体表）。
+/// 支持五个预定义实体与数字引用；未知命名实体在 lenient 模式下按字面保留，
+/// 严格模式下报错。文档解析请用带内部实体表的入口。
 pub fn decode_entities(
   text : String,
   opts : ParseOptions,
 ) -> Result[String, String] {
+  decode_entities_in(text, opts, [], 0)
+}
+
+///|
+/// 实体解码内部实现：`entities` 为 DOCTYPE 内部子集声明的内部实体表；
+/// `depth` 防止实体循环引用导致无限递归（上限 8）。
+fn decode_entities_in(
+  text : String,
+  opts : ParseOptions,
+  entities : Array[(String, String)],
+  depth : Int32,
+) -> Result[String, String] {
+  if depth > 8 {
+    return Err("实体引用嵌套超过 8 层，疑似循环引用")
+  }
   let cs = @util.to_chars(text)
   let out : Array[Char] = []
   let n = cs.length()
@@ -562,7 +693,7 @@ pub fn decode_entities(
         }
       } else {
         let name = @util.from_chars(buf)
-        match resolve_entity(name, opts) {
+        match resolve_entity(name, opts, entities, depth) {
           Ok(Some(s)) =>
             for ch in @util.to_chars(s) {
               out.push(ch)
@@ -596,10 +727,25 @@ pub fn decode_entities(
 fn resolve_entity(
   name : String,
   opts : ParseOptions,
+  entities : Array[(String, String)],
+  depth : Int32,
 ) -> Result[String?, String] {
   let cs = @util.to_chars(name)
   if cs.length() == 0 {
     return Err("空实体引用 '&;'")
+  }
+  // 内部实体优先于 lenient 的 nbsp 兜底；外部实体不入表，故不会被解析
+  for ent in entities {
+    if ent.0 == name {
+      return Ok(
+        Some(
+          match decode_entities_in(ent.1, opts, entities, depth + 1) {
+            Ok(v) => v
+            Err(e) => return Err(e)
+          },
+        ),
+      )
+    }
   }
   if cs[0] == '#' {
     return Ok(

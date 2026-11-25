@@ -58,15 +58,28 @@ CSS = (
 
 
 def opf(title, creator, lang, chapters, epub3, with_nav, with_ncx, with_css,
-        with_cover, broken_idref, rich_metadata=False):
+        with_cover, broken_idref, rich_metadata=False, internal_entities=False):
     ver = "3.0" if epub3 else "2.0"
-    lines = [
-        '<?xml version="1.0" encoding="utf-8"?>',
+    lines = ['<?xml version="1.0" encoding="utf-8"?>']
+    if internal_entities:
+        # EPUB 3.3 合法：DOCTYPE 内部子集声明内部实体（非外部实体）。
+        lines += [
+            '<!DOCTYPE package [',
+            f'  <!ENTITY book.title "{title}">',
+            f'  <!ENTITY book.lang "{lang}">',
+            ']>',
+        ]
+    lines += [
         f'<package xmlns="http://www.idpf.org/2007/opf" version="{ver}" unique-identifier="uid">',
         '  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">',
         '    <dc:identifier id="uid">urn:uuid:moonread-sample</dc:identifier>',
     ]
-    if rich_metadata:
+    if internal_entities:
+        # 合法 EPUB 3.3：标题文本与属性都引用内部实体。
+        lines.append(
+            '    <dc:title id="title-main" xml:lang="&book.lang;">&book.title;</dc:title>'
+        )
+    elif rich_metadata:
         # EPUB 3.3 合法写法：首个 dc:title 是主标题，其余按 xml:lang 区分；
         # creator 角色用 <meta refines> 表达，不丢插画师/别名/file-as 语义。
         lines += [
@@ -179,7 +192,7 @@ def specs():
     base = dict(
         title="MoonRead 样例", creator="MOONBIT", lang="zh", chapters=two,
         epub3=True, with_nav=True, with_ncx=False, with_css=True, with_cover=False,
-        broken_idref=False, rich_metadata=False,
+        broken_idref=False, rich_metadata=False, internal_entities=False,
     )
     out = []
 
@@ -204,6 +217,7 @@ def specs():
     add("no-container", with_nav=True)
     add("malformed-opf", with_nav=True)
     add("rich-metadata", title="Rich Metadata Sample", rich_metadata=True)
+    add("internal-entities", title="内部实体书名：月亮与六便士", internal_entities=True)
     return out
 
 
