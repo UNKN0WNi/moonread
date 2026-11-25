@@ -160,7 +160,7 @@ fn measure_null(req : RenderRequest) -> Result[Array[MeasuredBlock], String] {
   // 关键：用 body 在**整棵文档**里的真实路径做起点，而不是空串。
   // 否则度量块路径是 p[1]，而 rules 记录的是 body[1]/p[1]，永远匹配不上。
   let body_path = @xml.path_of_first(req.doc, "body")
-  collect_leaf_blocks(body, body_path, out, chars_per_line, req.line_height)
+  collect_leaf_blocks(body, body_path, out, chars_per_line, req.line_height, 0)
   Ok(out)
 }
 
@@ -182,6 +182,7 @@ fn collect_leaf_blocks(
   out : Array[MeasuredBlock],
   chars_per_line : Int32,
   line_height : Double,
+  list_depth : Int32,
 ) -> Unit {
   let has_block_child = contains_block_child(el)
   if is_block_tag(el.tag) && !has_block_child {
@@ -207,7 +208,13 @@ fn collect_leaf_blocks(
         pending = ""
         let cp = @xml.child_path(my_path, child.tag, idx)
         idx = idx + 1
-        collect_leaf_blocks(child, cp, out, chars_per_line, line_height)
+        if is_list_tag(child.tag) {
+          collect_list(child, cp, out, chars_per_line, line_height, list_depth)
+        } else {
+          collect_leaf_blocks(
+            child, cp, out, chars_per_line, line_height, list_depth,
+          )
+        }
       }
     }
   }
@@ -228,7 +235,10 @@ fn flush_text(
     let path = @xml.child_path(parent_path, "#text", text_idx)
     out.push(MeasuredBlock::{
       path,
-      block: text_block_of(path, trimmed, chars_per_line, line_height),
+      block: @paginate.with_text(
+        text_block_of(path, trimmed, chars_per_line, line_height),
+        trimmed,
+      ),
     })
   }
 }
@@ -243,6 +253,106 @@ fn contains_block_child(el : @xml.Element) -> Bool {
     }
   }
   found
+}
+
+///|
+fn is_list_tag(tag : String) -> Bool {
+  let t = @util.ascii_lower(@xml.local_name(tag))
+  t == "ol" || t == "ul"
+}
+
+///|
+/// 列表项自身文字，不含嵌套列表（嵌套项会各自成块）。
+fn list_item_text(li : @xml.Element) -> String {
+  let mut raw = ""
+  for c in li.children {
+    match c {
+      @xml.EText(t) => raw = raw + t
+      @xml.EElement(child) =>
+        if !is_list_tag(child.tag) {
+          raw = raw + text_of(child)
+        }
+    }
+  }
+  normalize_ws(raw, false)
+}
+
+///|
+/// `ol` / `ul` 产出带层级与序号的 BKList 块，不再压平成普通文本块。
+fn collect_list(
+  el : @xml.Element,
+  my_path : String,
+  out : Array[MeasuredBlock],
+  chars_per_line : Int32,
+  line_height : Double,
+  depth : Int32,
+) -> Unit {
+  let ordered = @util.ascii_lower(@xml.local_name(el.tag)) == "ol"
+  let mut idx = 0
+  let mut item = 1
+  for c in el.children {
+    match c {
+      @xml.EElement(li) =>
+        if @util.ascii_lower(@xml.local_name(li.tag)) == "li" {
+          let cp = @xml.child_path(my_path, li.tag, idx)
+          idx = idx + 1
+          let text = list_item_text(li)
+          let lines = lines_of(text, chars_per_line)
+          let block = @paginate.with_text(
+            @paginate.list_block(
+              cp, text, lines, line_height, ordered, depth, item,
+            ),
+            text,
+          )
+          out.push(MeasuredBlock::{ path: cp, block, })
+          collect_nested_lists(
+            li,
+            cp,
+            out,
+            chars_per_line,
+            line_height,
+            depth + 1,
+          )
+          item = item + 1
+        } else {
+          let cp = @xml.child_path(my_path, li.tag, idx)
+          idx = idx + 1
+          collect_leaf_blocks(
+            li,
+            cp,
+            out,
+            chars_per_line,
+            line_height,
+            depth + 1,
+          )
+        }
+      @xml.EText(_) => ()
+    }
+  }
+}
+
+///|
+fn collect_nested_lists(
+  li : @xml.Element,
+  my_path : String,
+  out : Array[MeasuredBlock],
+  chars_per_line : Int32,
+  line_height : Double,
+  depth : Int32,
+) -> Unit {
+  let mut idx = 0
+  for c in li.children {
+    match c {
+      @xml.EElement(child) => {
+        let cp = @xml.child_path(my_path, child.tag, idx)
+        idx = idx + 1
+        if is_list_tag(child.tag) {
+          collect_list(child, cp, out, chars_per_line, line_height, depth)
+        }
+      }
+      @xml.EText(_) => ()
+    }
+  }
 }
 
 ///|
@@ -267,40 +377,53 @@ fn measure_one(
     let scale = heading_scale(tag)
     MeasuredBlock::{
       path,
-      block: @paginate.Block::{
-        id: path,
-        kind: @paginate.BKHeading,
-        height: line_height * scale * lines.to_double(),
-        line_height: line_height * scale,
-        lines,
-        splittable: true,
-        break_before: true,
-        break_after: false,
-        chapter_start: false,
-        keep_with_next: true,
-      },
+      block: @paginate.with_text(
+        @paginate.heading_block(path, line_height * scale * lines.to_double()),
+        text,
+      ),
     }
   } else if tag == "table" {
-    let rows = @xml.find_all_child(el, "tr").length()
-    let n = if rows > 0 { rows } else { 1 }
+    // 表格由渲染后端整体绘制，但单元格文字必须进入块模型，
+    // 否则内容层不变式无法发现表格文字丢失。
+    let rows = @xml.find_all_child(el, "tr")
+    let n = if rows.length() > 0 { rows.length() } else { 1 }
+    let text = collapsed_text(el)
     MeasuredBlock::{
       path,
-      block: @paginate.atomic_block(
-        path,
-        @paginate.BKTable,
-        line_height * n.to_double(),
+      block: @paginate.with_text(
+        @paginate.atomic_block(
+          path,
+          @paginate.BKTable,
+          line_height * n.to_double(),
+        ),
+        text,
       ),
     }
   } else if tag == "figure" {
     MeasuredBlock::{
       path,
-      block: @paginate.atomic_block(path, @paginate.BKFigure, line_height * 6.0),
+      block: @paginate.with_text(
+        @paginate.atomic_block(path, @paginate.BKFigure, line_height * 6.0),
+        collapsed_text(el),
+      ),
+    }
+  } else if tag == "pre" {
+    let text = preserved_text(el)
+    MeasuredBlock::{
+      path,
+      block: @paginate.with_text(
+        text_block_of(path, text, chars_per_line, line_height),
+        text,
+      ),
     }
   } else {
     let text = collapsed_text(el)
     MeasuredBlock::{
       path,
-      block: text_block_of(path, text, chars_per_line, line_height),
+      block: @paginate.with_text(
+        text_block_of(path, text, chars_per_line, line_height),
+        text,
+      ),
     }
   }
 }
@@ -330,9 +453,59 @@ fn heading_scale(tag : String) -> Double {
 }
 
 ///|
-/// HTML 空白折叠：连续空白折叠为一个空格，首尾空白丢弃。
+/// 递归提取可见文本：`<br>` 贡献换行，`<pre>` 子树保留原始空白。
+fn text_of(el : @xml.Element) -> String {
+  let mut out = ""
+  for c in el.children {
+    match c {
+      @xml.EText(t) => out = out + t
+      @xml.EElement(child) => {
+        let tag = @util.ascii_lower(@xml.local_name(child.tag))
+        if tag == "br" {
+          out = out + "\n"
+        } else if tag == "pre" {
+          out = out + raw_text(child)
+        } else {
+          out = out + text_of(child)
+        }
+      }
+    }
+  }
+  out
+}
+
+///|
+/// 完全不折叠的递归文本（`<pre>` 用）。
+fn raw_text(el : @xml.Element) -> String {
+  let mut out = ""
+  for c in el.children {
+    match c {
+      @xml.EText(t) => out = out + t
+      @xml.EElement(child) =>
+        if @util.ascii_lower(@xml.local_name(child.tag)) == "br" {
+          out = out + "\n"
+        } else {
+          out = out + raw_text(child)
+        }
+    }
+  }
+  out
+}
+
+///|
+/// HTML 空白折叠：连续空白折叠为一个空格，首尾空白丢弃；`<br>` 保留换行。
 pub fn collapsed_text(el : @xml.Element) -> String {
-  let raw = @xml.text_content(el)
+  normalize_ws(text_of(el), false)
+}
+
+///|
+/// `<pre>` 的空白保留路径。
+pub fn preserved_text(el : @xml.Element) -> String {
+  normalize_ws(raw_text(el), true)
+}
+
+///|
+fn normalize_ws(raw : String, preserve : Bool) -> String {
   let cs = @util.to_chars(raw)
   let out : Array[Char] = []
   let mut pending_space = false
@@ -340,7 +513,11 @@ pub fn collapsed_text(el : @xml.Element) -> String {
   let mut i = 0
   while i < cs.length() {
     let c = cs[i]
-    if @util.is_xml_space(c) {
+    if c == '\n' {
+      out.push('\n')
+      pending_space = false
+      started = true
+    } else if !preserve && @util.is_xml_space(c) {
       if started {
         pending_space = true
       }
@@ -400,12 +577,18 @@ pub fn lines_of(text : String, chars_per_line : Int32) -> Int32 {
     let mut lines = 1
     let mut used = 0
     for c in cs {
-      let w = display_width(c)
-      if used + w > chars_per_line {
+      if c == '\n' {
+        // `<br>` 与 `<pre>` 的显式换行：结束当前行，另起一行。
         lines = lines + 1
         used = 0
+      } else {
+        let w = display_width(c)
+        if used + w > chars_per_line {
+          lines = lines + 1
+          used = 0
+        }
+        used = used + w
       }
-      used = used + w
     }
     lines
   }
@@ -493,4 +676,38 @@ pub fn void_tag_names() -> Array[String] {
     }
   }
   out
+}
+
+///|
+fn char_count(s : String, c : Char) -> Int32 {
+  let mut n = 0
+  for x in s {
+    if x == c {
+      n = n + 1
+    }
+  }
+  n
+}
+
+///|
+/// 内容层不变式：源文档可见字符必须都能在度量块的 text 中找到同数量副本。
+/// 这补足了旧 `invariant_no_content_loss` 只校验分页高度、看不见
+/// DOM→度量块阶段文本丢失的盲区。
+pub fn invariant_visible_text_preserved(
+  doc : @xml.Element,
+  blocks : Array[MeasuredBlock],
+) -> Bool {
+  let source = normalize_ws(text_of(find_body(doc)), false)
+  let mut measured = ""
+  for b in blocks {
+    measured = measured + b.block.text
+  }
+  for c in source {
+    if !@util.is_xml_space(c) && c != '\n' {
+      if char_count(measured, c) < char_count(source, c) {
+        return false
+      }
+    }
+  }
+  true
 }

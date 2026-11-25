@@ -89,3 +89,114 @@ test "混合文本按累计宽度折行，空串仍占一行" {
     msg="非法每行宽度退化为 1 行",
   )
 }
+
+///|
+fn measure_doc(xml : String) -> Array[@render.MeasuredBlock] {
+  match @xml.parse_document(xml) {
+    Err(_) => panic()
+    Ok(root) =>
+      match
+        @render.measure(@render.Null, @render.RenderRequest::{
+          doc: root,
+          viewport_width: 400.0,
+          line_height: 20.0,
+          font_size_px: 16.0,
+          avg_char_width_ratio: 0.5,
+        }) {
+        Err(_) => panic()
+        Ok(blocks) => blocks
+      }
+  }
+}
+
+///|
+/// `<br>` 贡献真实换行，`<pre>` 保留连续空白。
+test "br 与 pre 的文本语义不再丢失" {
+  let br_doc = @xml.parse_document(
+    "<html><body><p>第一行<br/>第二行</p></body></html>",
+  )
+  match br_doc {
+    Err(_) => panic()
+    Ok(root) =>
+      match @xml.find_descendant(root, "p") {
+        None => panic()
+        Some(p) => {
+          let text = @render.collapsed_text(p)
+          assert_true(
+            @util.contains(text, "\n"),
+            msg="br 应产生换行：" + text,
+          )
+          assert_true(@render.lines_of(text, 40) == 2, msg="两行")
+        }
+      }
+  }
+  let pre_doc = @xml.parse_document(
+    "<html><body><pre>行一  行二</pre></body></html>",
+  )
+  match pre_doc {
+    Err(_) => panic()
+    Ok(root) =>
+      match @xml.find_descendant(root, "pre") {
+        None => panic()
+        Some(pre) => {
+          let text = @render.preserved_text(pre)
+          assert_true(
+            @util.contains(text, "行一  行二"),
+            msg="pre 空白保留：" + text,
+          )
+        }
+      }
+  }
+}
+
+///|
+/// 列表真正产出 BKList，带有序标记、层级与序号。
+test "有序列表产出带序号的 BKList 块" {
+  let blocks = measure_doc(
+    "<html><body><ol><li>第一章</li><li>第二章</li></ol></body></html>",
+  )
+  assert_true(blocks.length() == 2, msg="两项")
+  let mut i = 0
+  while i < 2 {
+    assert_true(blocks[i].block.kind == @paginate.BKList, msg="列表块类型")
+    assert_true(blocks[i].block.list_ordered, msg="有序列表")
+    assert_true(blocks[i].block.list_index == i + 1, msg="序号")
+    assert_true(blocks[i].block.list_depth == 0, msg="层级")
+    i = i + 1
+  }
+}
+
+///|
+/// 表格单元格文字在块模型里有载体（BKTable.text）。
+test "表格单元格文字进入块模型" {
+  let blocks = measure_doc(
+    "<html><body><table><tr><td>单元格甲</td><td>单元格乙</td></tr></table></body></html>",
+  )
+  assert_true(blocks.length() == 1, msg="一个表格块")
+  assert_true(blocks[0].block.kind == @paginate.BKTable, msg="表格块类型")
+  assert_true(
+    @util.contains(blocks[0].block.text, "单元格甲") &&
+    @util.contains(blocks[0].block.text, "单元格乙"),
+    msg="单元格文字：" + blocks[0].block.text,
+  )
+}
+
+///|
+/// 内容层不变式能识别 DOM 文本是否全部进入度量块。
+test "可见字符不丢失不变式" {
+  let root = @xml.parse_document(
+    "<html><body><div>段前文字<p>块内段落</p>段后文字</div></body></html>",
+  )
+  match root {
+    Err(_) => panic()
+    Ok(doc) => {
+      let blocks = measure_doc(
+        "<html><body><div>段前文字<p>块内段落</p>段后文字</div></body></html>",
+      )
+      assert_true(
+        @render.invariant_visible_text_preserved(doc, blocks),
+        msg="修复后所有可见字符都在块里",
+      )
+    }
+  }
+}

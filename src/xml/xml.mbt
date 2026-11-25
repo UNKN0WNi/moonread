@@ -58,6 +58,8 @@ priv struct XP {
   opts : ParseOptions
   /// DOCTYPE 内部子集声明的内部实体：name -> value。外部实体不进表。
   entities : Array[(String, String)]
+  /// 实体替换递归深度；避免自引用实体无限展开。
+  entity_depth : Int32
 }
 
 ///|
@@ -83,6 +85,7 @@ pub fn parse_document_with(
     depth: 0,
     opts,
     entities: [],
+    entity_depth: 0,
   }
   match skip_prolog(p) {
     Ok(_) => ()
@@ -304,18 +307,15 @@ fn parse_internal_subset(
       if c == '"' || c == '\'' {
         let saved = p.pos
         p.pos = i + 1
-        let raw = match read_quoted(p, c) {
+        let raw = match read_entity_value(p, c) {
           Ok(v) => v
           Err(e) => return Err(e)
         }
         i = p.pos
         p.pos = saved
-        // 内部实体值本身可含实体引用，按当前表展开（未声明者在严格模式报错）
-        let value = match decode_entities_in(raw, p.opts, p.entities, 1) {
-          Ok(v) => v
-          Err(e) => return Err(e)
-        }
-        p.entities.push((name, value))
+        // 保留原始替换文本：XML 规定实体在文本中被引用时，替换文本要
+        // 作为标记重新解析；提前展开会把 `&lt;b&gt;` 误变成真正的 <b> 元素。
+        p.entities.push((name, raw))
       } else {
         // SYSTEM / PUBLIC 或其他非引号形式：外部实体，规范禁止
         return Err(
@@ -365,6 +365,16 @@ fn read_name(p : XP) -> Result[String, String] {
 }
 
 ///|
+fn has_attr_name(attrs : Array[(String, String)], name : String) -> Bool {
+  for kv in attrs {
+    if kv.0 == name {
+      return true
+    }
+  }
+  false
+}
+
+///|
 fn is_name_char(c : Char) -> Bool {
   if c >= 'a' && c <= 'z' {
     true
@@ -381,8 +391,10 @@ fn is_name_char(c : Char) -> Bool {
 
 ///|
 fn parse_element(p : XP) -> Result[Element, String] {
-  if p.depth > 96 {
-    return err_at(p, "元素嵌套超过 96 层，疑似构造输入")
+  // XML 1.0 没有层级上限；HTML5 的实现建议 512。合法深层文档不能因
+  // 内核自设的 96 层上限被误拒，因此对齐到 512 并保留构造输入防线。
+  if p.depth > 512 {
+    return err_at(p, "元素嵌套超过 512 层，疑似构造输入")
   }
   if cur(p) != Some('<') {
     return err_at(p, "期望 '<' 开始标签")
@@ -417,6 +429,10 @@ fn parse_element(p : XP) -> Result[Element, String] {
           Ok(__try_v_3) => __try_v_3
           Err(__try_e_3) => return Err(__try_e_3)
         }
+        // XML WFC: No Duplicate Attributes。expat 也会拒绝同一限定名重复。
+        if has_attr_name(attrs, name) {
+          return err_at(p, "属性 '" + name + "' 重复（违反 XML WFC）")
+        }
         skip_ws(p)
         if cur(p) != Some('=') {
           if p.opts.lenient {
@@ -432,15 +448,19 @@ fn parse_element(p : XP) -> Result[Element, String] {
             Ok(__try_v_4) => __try_v_4
             Err(__try_e_4) => return Err(__try_e_4)
           }
-          attrs.push(
-            (
-              name,
-              match decode_entities_in(raw, p.opts, p.entities, 0) {
-                Ok(__try_v_5) => __try_v_5
-                Err(__try_e_5) => return Err(__try_e_5)
-              },
-            ),
-          )
+          let decoded = match decode_entities_in(raw, p.opts, p.entities, 0) {
+            Ok(__try_v_5) => __try_v_5
+            Err(__try_e_5) => return Err(__try_e_5)
+          }
+          if @util.contains(decoded, "<") {
+            return err_at(
+              p,
+              "属性 '" +
+              name +
+              "' 的值经实体展开后不得出现裸 '<'",
+            )
+          }
+          attrs.push((name, decoded))
         }
       }
     }
@@ -586,12 +606,12 @@ fn parse_children(
         p.pos = p.pos + 1
       }
       let raw = @util.from_chars(@util.slice_chars(p.src, start, p.pos))
-      let decoded = match decode_entities_in(raw, p.opts, p.entities, 0) {
+      let nodes = match decode_text_nodes(p, raw) {
         Ok(__try_v_8) => __try_v_8
         Err(__try_e_8) => return Err(__try_e_8)
       }
-      if decoded.length() > 0 {
-        out.push(EText(decoded))
+      for n in nodes {
+        out.push(n)
       }
     }
   }
@@ -614,7 +634,24 @@ fn read_attr_value(p : XP) -> Result[String, String] {
 }
 
 ///|
+/// 属性值：禁止裸 '<'，并按 XML §3.3.3 把字面换行/制表归一化为空格。
 fn read_quoted(p : XP, quote : Char) -> Result[String, String] {
+  read_quoted_with(p, quote, false, true)
+}
+
+///|
+/// 内部实体声明值：允许 '<'（在正文中引用时作为标记重新解析是合法的）。
+fn read_entity_value(p : XP, quote : Char) -> Result[String, String] {
+  read_quoted_with(p, quote, true, true)
+}
+
+///|
+fn read_quoted_with(
+  p : XP,
+  quote : Char,
+  allow_lt : Bool,
+  normalize_space : Bool,
+) -> Result[String, String] {
   let n = p.src.length()
   let buf : Array[Char] = []
   while p.pos < n {
@@ -623,14 +660,18 @@ fn read_quoted(p : XP, quote : Char) -> Result[String, String] {
       p.pos = p.pos + 1
       return Ok(@util.from_chars(buf))
     }
-    if c == '<' {
+    if c == '<' && !allow_lt {
       return Err(
         "第 " +
         p.pos.to_string() +
         " 个字符处：属性值内不得出现裸 '<'",
       )
     }
-    buf.push(c)
+    if normalize_space && (c == '\n' || c == '\t' || c == '\r') {
+      buf.push(' ')
+    } else {
+      buf.push(c)
+    }
     p.pos = p.pos + 1
   }
   Err("第 " + p.pos.to_string() + " 个字符处：属性值引号未闭合")
@@ -645,6 +686,136 @@ pub fn decode_entities(
   opts : ParseOptions,
 ) -> Result[String, String] {
   decode_entities_in(text, opts, [], 0)
+}
+
+///|
+fn internal_entity_value(
+  entities : Array[(String, String)],
+  name : String,
+) -> String? {
+  for ent in entities {
+    if ent.0 == name {
+      return Some(ent.1)
+    }
+  }
+  None
+}
+
+///|
+fn append_text_node(out : Array[Node], buf : Array[Char]) -> Unit {
+  if buf.length() > 0 {
+    out.push(EText(@util.from_chars(buf)))
+  }
+}
+
+///|
+/// 正文中的实体引用：内部实体的替换文本必须作为标记重新解析。
+/// 这正是 XML 1.0 §4.4.5 与 expat 的行为；属性值仍走 `decode_entities_in`。
+fn decode_text_nodes(p : XP, raw : String) -> Result[Array[Node], String] {
+  let cs = @util.to_chars(raw)
+  let out : Array[Node] = []
+  let mut buf : Array[Char] = []
+  let n = cs.length()
+  let mut i = 0
+  while i < n {
+    if cs[i] != '&' {
+      buf.push(cs[i])
+      i = i + 1
+    } else {
+      let mut j = i + 1
+      let name_buf : Array[Char] = []
+      let mut closed = false
+      while j < n && name_buf.length() < 32 {
+        if cs[j] == ';' {
+          closed = true
+          break
+        }
+        if cs[j] == '&' || @util.is_xml_space(cs[j]) || cs[j] == '<' {
+          break
+        }
+        name_buf.push(cs[j])
+        j = j + 1
+      }
+      if !closed {
+        if p.opts.lenient {
+          buf.push('&')
+          i = i + 1
+        } else {
+          return Err(
+            "第 " + i.to_string() + " 个字符处：实体引用缺少 ';'",
+          )
+        }
+      } else {
+        let name = @util.from_chars(name_buf)
+        match internal_entity_value(p.entities, name) {
+          Some(value) => {
+            if p.entity_depth >= 8 {
+              return Err("内部实体 '" + name + "' 替换嵌套超过 8 层")
+            }
+            append_text_node(out, buf)
+            buf = []
+            let fragment = "<moonread-fragment>" +
+              value +
+              "</moonread-fragment>"
+            let sub = XP::{
+              src: @util.to_chars(fragment),
+              pos: 0,
+              depth: p.depth,
+              opts: p.opts,
+              entities: p.entities,
+              entity_depth: p.entity_depth + 1,
+            }
+            let el = match parse_element(sub) {
+              Ok(__try_v_9) => __try_v_9
+              Err(__try_e_9) =>
+                return Err(
+                  "内部实体 '" +
+                  name +
+                  "' 替换文本解析失败：" +
+                  __try_e_9,
+                )
+            }
+            skip_ws(sub)
+            if sub.pos != sub.src.length() {
+              return Err(
+                "内部实体 '" + name + "' 替换文本含多余内容",
+              )
+            }
+            for node in el.children {
+              out.push(node)
+            }
+          }
+          None =>
+            match resolve_entity(name, p.opts, p.entities, 0) {
+              Ok(Some(s)) =>
+                for ch in @util.to_chars(s) {
+                  buf.push(ch)
+                }
+              Ok(None) =>
+                if p.opts.lenient {
+                  buf.push('&')
+                  for ch in name_buf {
+                    buf.push(ch)
+                  }
+                  buf.push(';')
+                } else {
+                  return Err(
+                    "第 " +
+                    i.to_string() +
+                    " 个字符处：未声明的实体 '&" +
+                    name +
+                    ";'",
+                  )
+                }
+              Err(e) => return Err(e)
+            }
+        }
+        i = j + 1
+      }
+    }
+  }
+  append_text_node(out, buf)
+  Ok(out)
 }
 
 ///|
@@ -805,10 +976,26 @@ fn decode_numeric(name : String) -> Result[String, String] {
       }
     }
   }
+  if !is_xml_char(cp) {
+    return Err(
+      "数字实体码位非法（XML Char production）：" + cp.to_string(),
+    )
+  }
   match @util.codepoint_to_char(cp) {
     Some(ch) => Ok(@util.char_to_string(ch))
     None => Err("数字实体码位非法：" + cp.to_string())
   }
+}
+
+///|
+/// XML 1.0 §2.2 Char production。expat 同样拒绝 #x0、#x1 等控制码位。
+fn is_xml_char(cp : Int32) -> Bool {
+  cp == 0x9 ||
+  cp == 0xa ||
+  cp == 0xd ||
+  (cp >= 0x20 && cp <= 0xd7ff) ||
+  (cp >= 0xe000 && cp <= 0xfffd) ||
+  (cp >= 0x10000 && cp <= 0x10ffff)
 }
 
 // ---------------- 访问器 ----------------
@@ -959,16 +1146,28 @@ pub fn find_descendant(el : Element, tag : String) -> Element? {
 /// 按 `id` 属性在整棵树里找元素（EPUB 的 `spine idref`、nav 锚点都要用）。
 pub fn find_by_id(root : Element, id : String) -> Element? {
   let mut found : Element? = None
-  if attr_ci(root, "id") == Some(id) {
+  if plain_attr(root, "id") == Some(id) {
     return Some(root)
   }
   for d in descendants(root) {
-    if attr_ci(d, "id") == Some(id) {
+    if plain_attr(d, "id") == Some(id) {
       found = Some(d)
       break
     }
   }
   found
+}
+
+///|
+/// 只取无前缀的 id 属性：`xml:id` 与 `id` 在 XML 里是不同属性，
+/// 按 local name 混用会让 id 查找命中错误节点。
+fn plain_attr(el : Element, name : String) -> String? {
+  for kv in el.attrs {
+    if @util.ascii_lower(kv.0) == name {
+      return Some(kv.1)
+    }
+  }
+  None
 }
 
 ///|

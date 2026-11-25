@@ -38,7 +38,11 @@ pub fn invariant_monotonic(Paginated) -> Bool
 
 pub fn invariant_no_content_loss(Array[Block], Paginated) -> Bool
 
+pub fn invariant_no_pagination_loss(Array[Block], Paginated) -> Bool
+
 pub fn invariant_within_page_height(PagePolicy, Paginated) -> Bool
+
+pub fn list_block(String, String, Int32, Double, Bool, Int32, Int32) -> Block
 
 pub fn mm_to_px(Double) -> Double
 
@@ -68,13 +72,19 @@ pub fn with_break_before(Block) -> Block
 
 pub fn with_chapter_start(Block) -> Block
 
+pub fn with_text(Block, String) -> Block
+
 // Errors
 
 // Types and methods
 #derive(Eq, @debug.Debug)
 pub(all) struct Block {
   id : String
+  text : String
   kind : BlockKind
+  list_ordered : Bool
+  list_depth : Int32
+  list_index : Int32
   height : Double
   line_height : Double
   lines : Int32

@@ -58,7 +58,8 @@ CSS = (
 
 
 def opf(title, creator, lang, chapters, epub3, with_nav, with_ncx, with_css,
-        with_cover, broken_idref, rich_metadata=False, internal_entities=False):
+        with_cover, broken_idref, rich_metadata=False, internal_entities=False,
+        variant=""):
     ver = "3.0" if epub3 else "2.0"
     lines = ['<?xml version="1.0" encoding="utf-8"?>']
     if internal_entities:
@@ -69,8 +70,9 @@ def opf(title, creator, lang, chapters, epub3, with_nav, with_ncx, with_css,
             f'  <!ENTITY book.lang "{lang}">',
             ']>',
         ]
+    lang_attr = ' xml:lang="zh-Hant"' if variant == "package-lang" else ""
     lines += [
-        f'<package xmlns="http://www.idpf.org/2007/opf" version="{ver}" unique-identifier="uid">',
+        f'<package xmlns="http://www.idpf.org/2007/opf" version="{ver}"{lang_attr} unique-identifier="uid">',
         '  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">',
         '    <dc:identifier id="uid">urn:uuid:moonread-sample</dc:identifier>',
     ]
@@ -98,9 +100,18 @@ def opf(title, creator, lang, chapters, epub3, with_nav, with_ncx, with_css,
             f"    <dc:creator>{creator}</dc:creator>",
         ]
     lines.append(f"    <dc:language>{lang}</dc:language>")
+    if variant == "multivalue-dc":
+        lines += [
+            '    <dc:publisher>P1</dc:publisher><dc:publisher>P2</dc:publisher>',
+            '    <dc:description>D1</dc:description><dc:description>D2</dc:description>',
+            '    <dc:date>2026-01-01</dc:date><dc:date>2026-02-02</dc:date>',
+            '    <dc:source>S1</dc:source><dc:source>S2</dc:source>',
+            '    <dc:type>Text</dc:type><dc:coverage>World</dc:coverage>',
+            '    <dc:relation>R</dc:relation><dc:format>application/xhtml+xml</dc:format>',
+        ]
     if epub3:
         lines.append('    <meta property="dcterms:modified">2026-11-19T00:00:00Z</meta>')
-    if with_cover:
+    if with_cover or variant == "cover-legacy":
         lines.append('    <meta name="cover" content="cover-img"/>')
     lines += ["  </metadata>", "  <manifest>"]
     if with_nav:
@@ -113,9 +124,22 @@ def opf(title, creator, lang, chapters, epub3, with_nav, with_ncx, with_css,
         )
     if with_css:
         lines.append('    <item id="css" href="style.css" media-type="text/css"/>')
+    if variant == "cover-legacy":
+        lines += [
+            '    <item id="other-img" href="other.png" media-type="image/png"/>',
+            '    <item id="cover-img" href="cover.png" media-type="image/png"/>',
+        ]
     if with_cover:
         lines.append(
             '    <item id="cover-img" href="cover.png" media-type="image/png" properties="cover-image"/>'
+        )
+    if variant == "fallback":
+        lines.append(
+            '    <item id="foreign" href="foreign.jpg" media-type="image/jpeg" fallback="ch1"/>'
+        )
+    if variant == "svg":
+        lines.append(
+            '    <item id="svg" href="page.svg" media-type="image/svg+xml"/>'
         )
     if with_ncx:
         lines.append(
@@ -126,13 +150,28 @@ def opf(title, creator, lang, chapters, epub3, with_nav, with_ncx, with_css,
         lines.append('    <itemref idref="ncx" linear="no"/>')
     for cid, _t in chapters:
         lines.append(f'    <itemref idref="{cid}"/>')
+    if variant == "fallback":
+        lines.append('    <itemref idref="foreign"/>')
+    if variant == "svg":
+        lines.append('    <itemref idref="svg"/>')
     if broken_idref:
         lines.append('    <itemref idref="ghost"/>')
     lines += ["  </spine>", "</package>"]
     return "\n".join(lines) + "\n"
 
 
-def nav_xhtml(chapters, rich_metadata=False):
+def nav_xhtml(chapters, rich_metadata=False, variant=""):
+    if variant == "nav-multivalue":
+        items = "\n".join(f'<li><a href="{c}.xhtml">{t}</a></li>' for c, t in chapters)
+        return (
+            '<?xml version="1.0" encoding="utf-8"?>\n'
+            '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">\n'
+            "<head><title>目录</title></head><body>\n"
+            '<nav epub:type="landmarks"><ol><li><a href="ch1.xhtml">地标项</a></li></ol></nav>\n'
+            '<nav epub:type="toc landmarks"><h1>目录</h1><ol>\n'
+            + items
+            + "\n</ol></nav>\n</body></html>\n"
+        )
     if rich_metadata:
         # EPUB 3.3 合法：span 分组标题（无 href）+ 嵌套 ol，hidden 空值分支。
         items = "\n".join(f'<li><a href="{c}.xhtml">{t}</a></li>' for c, t in chapters)
@@ -193,6 +232,7 @@ def specs():
         title="MoonRead 样例", creator="MOONBIT", lang="zh", chapters=two,
         epub3=True, with_nav=True, with_ncx=False, with_css=True, with_cover=False,
         broken_idref=False, rich_metadata=False, internal_entities=False,
+        variant="",
     )
     out = []
 
@@ -218,6 +258,9 @@ def specs():
     add("malformed-opf", with_nav=True)
     add("rich-metadata", title="Rich Metadata Sample", rich_metadata=True)
     add("internal-entities", title="内部实体书名：月亮与六便士", internal_entities=True)
+    for variant in ("fallback", "svg", "nav-multivalue", "cover-legacy",
+                    "package-lang", "multivalue-dc"):
+        add("semantic-" + variant, variant=variant)
     return out
 
 
@@ -249,15 +292,24 @@ def write_epub(path: Path, name: str, s, *, omit_container=False, mimetype_last=
             )
         z.writestr("OEBPS/content.opf", opf_body)
         if s["with_nav"] and not malformed:
-            z.writestr("OEBPS/nav.xhtml", nav_xhtml(chapters, s.get("rich_metadata", False)))
+            z.writestr(
+                "OEBPS/nav.xhtml",
+                nav_xhtml(chapters, s.get("rich_metadata", False), s.get("variant", "")),
+            )
         if s["with_ncx"] and not malformed:
             z.writestr("OEBPS/toc.ncx", ncx_xml(title, chapters))
         for cid, t in chapters:
             z.writestr(f"OEBPS/{cid}.xhtml", chapter_xhtml(t))
         if s["with_css"]:
             z.writestr("OEBPS/style.css", CSS)
-        if s["with_cover"]:
+        if s["with_cover"] or s.get("variant") == "cover-legacy":
             z.writestr("OEBPS/cover.png", PNG_1PX)
+        if s.get("variant") == "cover-legacy":
+            z.writestr("OEBPS/other.png", PNG_1PX)
+        if s.get("variant") == "fallback":
+            z.writestr("OEBPS/foreign.jpg", "JPEG-BYTES-PLACEHOLDER")
+        if s.get("variant") == "svg":
+            z.writestr("OEBPS/page.svg", '<svg xmlns="http://www.w3.org/2000/svg"/>')
         if mimetype_last:
             z.writestr("mimetype", "application/epub+zip", compress_type=zipfile.ZIP_STORED)
 
@@ -275,18 +327,32 @@ def expect_for(name, s):
         res += 1
     if s["with_cover"]:
         res += 1
+    variant = s.get("variant", "")
+    chapter_count = len(chapters)
+    if variant in ("fallback", "svg"):
+        res += 1
+        chapter_count += 1
+    if variant == "cover-legacy":
+        res += 2
     toc = len(chapters) if s["with_nav"] or s["with_ncx"] else 0
     if name == "rich-metadata":
         # nav: 1 个 span 分组 + N 章 + 1 个 hidden 分支。
         toc = 1 + len(chapters) + 1
     broken = name == "malformed-opf"
-    return {
+    exp = {
         # 内核会解码 XML 实体；损坏 OPF 打不开，标题为空。
         "title": "" if broken else html.unescape(s["title"]),
-        "chapters": 0 if broken or name == "zero-chapters" else len(chapters),
+        "chapters": 0 if broken or name == "zero-chapters" else chapter_count,
         "toc_items": 0 if broken else toc,
         "resources": 0 if broken else res,
     }
+    if variant == "cover-legacy":
+        exp["cover"] = "OEBPS/cover.png"
+    if variant == "package-lang":
+        exp["title_lang"] = "zh-Hant"
+    if variant == "multivalue-dc":
+        exp["publishers"] = ["P1", "P2"]
+    return exp
 
 
 def main() -> int:

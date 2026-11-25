@@ -326,31 +326,31 @@ test "严格模式拒绝脏输入并给出偏移" {
 }
 
 ///|
-test "深度上限防构造输入" {
-  let mut deep = ""
-  let mut i = 0
-  while i < 120 {
-    deep = deep + "<a>"
-    i = i + 1
-  }
-  let mut k = 0
-  while k < 120 {
-    deep = deep + "</a>"
-    k = k + 1
-  }
-  assert_true(!doc_ok(deep), msg="120 层嵌套应被拒绝")
+test "合法深层嵌套通过，超 512 层才拒绝" {
   let mut ok = ""
   let mut j = 0
-  while j < 40 {
+  while j < 120 {
     ok = ok + "<a>"
     j = j + 1
   }
   let mut m = 0
-  while m < 40 {
+  while m < 120 {
     ok = ok + "</a>"
     m = m + 1
   }
-  assert_true(doc_ok(ok), msg="40 层嵌套应通过")
+  assert_true(doc_ok(ok), msg="120 层是合法 XML，必须接受")
+  let mut deep = ""
+  let mut i = 0
+  while i < 600 {
+    deep = deep + "<a>"
+    i = i + 1
+  }
+  let mut k = 0
+  while k < 600 {
+    deep = deep + "</a>"
+    k = k + 1
+  }
+  assert_true(!doc_ok(deep), msg="600 层构造输入应被拒绝")
 }
 
 ///|
@@ -539,7 +539,7 @@ test "DOCTYPE 参数实体与循环引用被拒绝" {
     doc_err_text(param).contains("禁止参数实体声明"),
     msg="参数实体应报错",
   )
-  // 自引用实体在入表前展开，严格模式按「未声明」拒绝——同样安全、不 panic
+  // 自引用实体在替换时按深度上限拒绝，不死循环、不 panic
   assert_true(
     doc_err_text(cyclic).length() > 0,
     msg="循环实体应被拒绝：" + doc_err_text(cyclic),
@@ -557,4 +557,78 @@ test "DOCTYPE 外部标识符仍可解析" {
     doc_ok(xml),
     msg="外部标识符 DOCTYPE 合法：" + doc_err_text(xml),
   )
+}
+
+///|
+/// XML 1.0 §4.4.5：内部实体在正文中的替换文本要作为标记重新解析。
+/// expat 对同一输入解析成功并产生 <b> 元素；旧实现误拒为非法输入。
+test "正文中的内部实体替换文本作为标记重新解析" {
+  let xml = @util.join_nl([
+    "<!DOCTYPE doc [", "  <!ENTITY frag \"<b>粗体</b>文字\">", "]>", "<doc>前&frag;后</doc>",
+  ])
+  match @xml.parse_document(xml) {
+    Err(_) => panic()
+    Ok(root) => {
+      let kids = @xml.child_elements(root)
+      assert_true(kids.length() == 1, msg="b 元素应被解析出来")
+      assert_true(kids[0].tag == "b", msg="标签：" + kids[0].tag)
+      assert_true(
+        @xml.text_content(kids[0]) == "粗体",
+        msg="实体内标记文本：" + @xml.text_content(kids[0]),
+      )
+      assert_true(
+        @xml.text_content(root) == "前粗体文字后",
+        msg="全文：" + @xml.text_content(root),
+      )
+    }
+  }
+}
+
+///|
+/// 同一个实体用于属性值时仍必须拒绝（WFC: No < in Attribute Values）。
+test "属性值内引用含标记的内部实体仍被拒绝" {
+  let xml = @util.join_nl([
+    "<!DOCTYPE doc [", "  <!ENTITY frag \"<b>x</b>\">", "]>", "<doc title=\"&frag;\"/>",
+  ])
+  assert_true(doc_err_text(xml).length() > 0, msg="属性值不得出现 '<'")
+}
+
+///|
+/// XML WFC: No Duplicate Attributes 与 §2.2 Char production。
+test "重复属性与 &#x0; 被拒绝" {
+  assert_true(
+    doc_err_text("<p id=\"a\" id=\"b\"/>").length() > 0,
+    msg="重复属性",
+  )
+  assert_true(doc_err_text("<p v=\"&#x0;\"/>").length() > 0, msg="非法码位")
+  assert_true(doc_ok("<p v=\"&#x9;\"/>"), msg="制表符引用合法")
+}
+
+///|
+/// XML §3.3.3：属性值中的字面换行/制表归一化为空格。
+test "属性值空白按 XML 规则归一化" {
+  let xml = "<p a=\"x\ny\tz\"/>"
+  match @xml.parse_document(xml) {
+    Err(_) => panic()
+    Ok(root) =>
+      assert_true(
+        @xml.attr_or_empty(root, "a") == "x y z",
+        msg="归一化结果：" + @xml.attr_or_empty(root, "a"),
+      )
+  }
+}
+
+///|
+/// `xml:id` 不应被当成普通 `id` 被 find_by_id 命中。
+test "find_by_id 不混用 xml:id 与 id" {
+  let xml = "<r><a xml:id=\"same\"/><b id=\"same\"/></r>"
+  match @xml.parse_document(xml) {
+    Err(_) => panic()
+    Ok(root) =>
+      match @xml.find_by_id(root, "same") {
+        None => panic()
+        Some(el) =>
+          assert_true(el.tag == "b", msg="只命中无前缀的 id：" + el.tag)
+      }
+  }
 }

@@ -26,7 +26,7 @@
 | 实体/语法类别 | 是否支持 | 依据 |
 |---|---|---|
 | 五个预定义实体（`lt/gt/amp/quot/apos`）+ 数字引用（十进制/十六进制） | ✅ 全部展开 | XML 1.0 预定义 |
-| **DOCTYPE 内部子集声明的内部实体** `<!ENTITY name "value">` | ✅ 文本与属性值中按语义展开，值可再含实体引用（递归，深度上限 8） | 规范未禁止，属合法 EPUB 输入 |
+| **DOCTYPE 内部子集声明的内部实体** `<!ENTITY name "value">` | ✅ 文本中替换值按标记重新解析（可产生元素），属性值按字符串展开；值可再含实体引用（递归，深度上限 8） | 规范未禁止，属合法 EPUB 输入；XML 1.0 §4.4.5 |
 | `DOCTYPE` 外部标识符（`PUBLIC`/`SYSTEM` 的 DTD 引用） | ✅ 允许出现在前言；不加载外部 DTD | 规范条款明确 MAY |
 | **外部实体声明** `<!ENTITY x SYSTEM "…">` / `PUBLIC "…" "…"` | ❌ 拒绝并给清晰错误 | 规范 MUST NOT（XXE 防线） |
 | 参数实体 `<!ENTITY % …>` | ❌ 拒绝 | EPUB 阅读内核无此需求，且多为外部用途 |
@@ -163,7 +163,28 @@
 
 断言：`DOCTYPE 外部实体：按 EPUB 规范拒绝`、`DOCTYPE 参数实体与循环引用被拒绝`、`DOCTYPE 外部标识符仍可解析`。
 
-实现位置：`src/xml/xml.mbt` 的 `skip_doctype` / `parse_internal_subset` / `decode_entities_in` / `resolve_entity`；端到端断言在 `src/epub/epub_test.mbt`。磁盘夹具 `internal-entities.epub` 与内存 fixture 成对生成，直接进入 19 本内核对账。
+实现位置：`src/xml/xml.mbt` 的 `skip_doctype` / `parse_internal_subset` / `decode_text_nodes` / `decode_entities_in` / `resolve_entity`；端到端断言在 `src/epub/epub_test.mbt`。磁盘夹具 `internal-entities.epub` 与内存 fixture 成对生成，直接进入 25 本内核对账。
+
+## 2.7 语义保真复审后的修正（2026-11-25）
+
+第三方审查指出：旧门禁只证明「能打开」，不证明「解析结果与规范语义等价」。本轮逐项修正并把每条变成可复现断言：
+
+| 条款 | 合法输入 → 预期解析结果 | 断言 / 夹具 |
+|---|---|---|
+| §3.5.1 / §5.7.2 fallback | spine 指向 foreign item 且 fallback 到 XHTML → 章节列表包含 fallback 路径，并给出一条告警 | `fallback 链…`；`semantic-fallback.epub` |
+| §3.1.3 SVG 核心内容文档 | `image/svg+xml` 直接进 spine → 计入章节，无需 fallback | `SVG 内容文档…`；`semantic-svg.epub` |
+| §C.2 `epub:type` 多值 | `epub:type="toc landmarks"` → 命中 toc nav，不是地标 nav | `epub:type=…`；`semantic-nav-multivalue.epub` |
+| EPUB2 `meta name/content` | `<meta name="cover" content="cover-img"/>` → 封面取 `cover.png`，即使另一张图排在前面 | `EPUB2 封面…`；`semantic-cover-legacy.epub` |
+| §5.3.7 `package/@xml:lang` | package 上标注 → 未标注 `dc:title` 继承该语言 | `package@xml:lang…`；`semantic-package-lang.epub` |
+| OPF2 `spine/@toc` | 多份 NCX → 按 toc id 取对应目录 | `EPUB2 spine@toc…` |
+| Repeatable Dublin Core | publisher/description/date/source/type/coverage/relation/format 全保留；单数槽位为首值 | `可重复 Dublin Core…`；`semantic-multivalue-dc.epub` |
+| §D.3.10 role scheme | 只采纳 `marc:relators` 的 role，自定义 scheme 不覆盖作者角色 | `可重复 Dublin Core…` |
+| HTML5 混合内容 | 块容器里块子节点前后的裸文本各自成度量块 | `块容器内的裸文本不再丢失` |
+| `<br>` / `<pre>` | `<br>` 贡献换行；`<pre>` 不折叠空白 | `br 与 pre 的文本语义不再丢失` |
+| 列表 / 表格 | `ol/li` 产出带有序标记、层级、序号的 `BKList`；表格单元格文字进入 `Block.text` | `有序列表…`、`表格单元格文字…` |
+| XML WFC / Char | 重复属性、`&#x0;` 被拒绝；属性值空白归一化；深度上限 512 | `重复属性与 &#x0;…`、`属性值空白…`、`合法深层嵌套…` |
+
+不变式也补齐：`invariant_no_content_loss` 改称 `invariant_no_pagination_loss`（只承诺分页高度守恒），新增 `invariant_visible_text_preserved` 核对源文档可见字符是否全部进入块文本。后者在 `core.open_chapter` 中以告警暴露，避免 DOM→度量块阶段静默丢字。
 
 ## 3. 可复现的验证命令
 
@@ -175,9 +196,9 @@ bash scripts/ci.sh
 python3 tools/corpus_check.py --require-manifest --require-probe
 ```
 
-当前结果：四端各 128 项测试通过；跨端输出一致；19 本 EPUB（17 自建 + 2 第三方公版）内核对账全部通过；`moon prove` 在 CI 的 Linux 任务中由 SMT 求解器验证。
+当前结果：四端各 147 项测试通过；跨端输出一致；25 本 EPUB（23 自建 + 2 第三方公版）内核对账全部通过；`moon prove` 在 CI 的 Linux 任务中由 SMT 求解器验证。
 
 ## 4. 语料来源
 
-- 17 本自建最小 EPUB：由 `tools/gen_fixtures.py` 与 `src/epub/fixture.mbt` 成对生成，Apache-2.0，见 `tests/fixtures/manifest.json`。其中 `rich-metadata.epub` 承载本文 §2.2–2.4 的合法语义样例，`internal-entities.epub` 承载 §2.6 的内部实体标题与命名空间案例。
+- 23 本自建最小 EPUB：由 `tools/gen_fixtures.py` 与 `src/epub/fixture.mbt` 成对生成，Apache-2.0，见 `tests/fixtures/manifest.json`。其中 `rich-metadata.epub` 承载本文 §2.2–2.4 的合法语义样例，`internal-entities.epub` 承载 §2.6 的内部实体标题与命名空间案例。
 - 2 本第三方公版 EPUB：来源 URL 与 SHA-256 钉在 `tests/corpus/manifest.json`，避免上游静默变更。

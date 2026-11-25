@@ -37,14 +37,18 @@
 
 ## 3. 测试语料
 
-`tools/gen_fixtures.py` 生成 17 本最小 EPUB，覆盖：
+`tools/gen_fixtures.py` 生成 23 本最小 EPUB，覆盖：
 
 - EPUB2 + NCX / EPUB3 + nav / 双目录 / 无目录；
 - 零章节 / 三十章节；
 - mimetype 位置异常 / 坏 idref / 重复 id；
 - 加密声明 / 封面 / 无 CSS / 实体标题 / DOCTYPE 内部实体标题与命名空间；
 - 缺 creator / language / container / OPF 畸形；
-- **rich-metadata**：多 `dc:title` + `xml:lang`、`meta refines` 角色/别名/file-as、nav `span` 分组与 `hidden` 分支（合法 EPUB 3.3 语义不丢失的回归样例）。
+- **rich-metadata**：多 `dc:title` + `xml:lang`、`meta refines` 角色/别名/file-as、nav `span` 分组与 `hidden` 分支；
+- **semantic-fallback / semantic-svg**：外国内容文档 fallback 链与 SVG 核心内容文档都计入阅读顺序，替换有告警；
+- **semantic-nav-multivalue**：`epub:type="toc landmarks"` 按 token 命中正确的 toc nav；
+- **semantic-cover-legacy / semantic-package-lang / semantic-multivalue-dc**：EPUB2 封面 `content`、`package@xml:lang` 默认语言、可重复 Dublin Core 的逐项对账。
+每条语义夹具只针对一个规范条款，避免另一条路径恰好通过掩盖缺陷。
 
 规范条款与合法输入/预期结果的逐条对照见 [EPUB-CONFORMANCE.md](EPUB-CONFORMANCE.md)。
 
@@ -59,5 +63,5 @@ python3 tools/corpus_check.py --require-manifest --require-probe
 `tests/corpus/manifest.json`。清单钉死来源与 SHA-256，避免上游静默变更。
 
 `--require-probe` 会调用 `tools/probe`，把磁盘上的 EPUB 经 fzip + 内核完整解析，
-再与 manifest 的标题 / 章节数 / 目录项数 / 资源数逐项对账。CI 强制开启，
+再与 manifest 的标题 / 章节数 / 目录项数 / 资源数 / 封面 / 标题语言 / 多值 publisher 逐项对账。CI 强制开启，
 不再只看 manifest 自检。fixture 的期望值曾把章节数误写成常量 1，正是这一步查出的。

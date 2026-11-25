@@ -172,9 +172,14 @@ pub fn render_chapter(b : Book, index : Int32) -> Result[ChapterPages, String] {
   for red in applied.effects.redirects {
     warnings.push("重定向 " + red.0 + ": " + red.1 + " => " + red.2)
   }
-  if !@paginate.invariant_no_content_loss(marked, result) {
+  if !@paginate.invariant_no_pagination_loss(marked, result) {
     warnings.push(
-      "不变式 1（不丢内容）未通过——这是缺陷，请附带本书与配置上报",
+      "不变式 no_pagination_loss（分页高度守恒）未通过——这是缺陷，请附带本书与配置上报",
+    )
+  }
+  if !@render.invariant_visible_text_preserved(applied.doc, measured) {
+    warnings.push(
+      "不变式 visible_text_preserved（正文可见字符不丢失）未通过——这是缺陷，请附带本书与配置上报",
     )
   }
   if !@paginate.invariant_monotonic(result) {

@@ -208,6 +208,84 @@
         "toc_items": 2,
         "resources": 4
       }
+    },
+    {
+      "file": "epub/semantic-fallback.epub",
+      "name": "semantic-fallback",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "MoonRead 样例",
+        "chapters": 3,
+        "toc_items": 2,
+        "resources": 5
+      }
+    },
+    {
+      "file": "epub/semantic-svg.epub",
+      "name": "semantic-svg",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "MoonRead 样例",
+        "chapters": 3,
+        "toc_items": 2,
+        "resources": 5
+      }
+    },
+    {
+      "file": "epub/semantic-nav-multivalue.epub",
+      "name": "semantic-nav-multivalue",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "MoonRead 样例",
+        "chapters": 2,
+        "toc_items": 2,
+        "resources": 4
+      }
+    },
+    {
+      "file": "epub/semantic-cover-legacy.epub",
+      "name": "semantic-cover-legacy",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "MoonRead 样例",
+        "chapters": 2,
+        "toc_items": 2,
+        "resources": 6,
+        "cover": "OEBPS/cover.png"
+      }
+    },
+    {
+      "file": "epub/semantic-package-lang.epub",
+      "name": "semantic-package-lang",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "MoonRead 样例",
+        "chapters": 2,
+        "toc_items": 2,
+        "resources": 4,
+        "title_lang": "zh-Hant"
+      }
+    },
+    {
+      "file": "epub/semantic-multivalue-dc.epub",
+      "name": "semantic-multivalue-dc",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "MoonRead 样例",
+        "chapters": 2,
+        "toc_items": 2,
+        "resources": 4,
+        "publishers": [
+          "P1",
+          "P2"
+        ]
+      }
     }
   ]
 }

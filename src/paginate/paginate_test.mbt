@@ -351,7 +351,11 @@ test "输入校验：块高度为负 / 可拆块行高非正" {
   assert_true(@paginate.check_consistent(bad1).length() > 0, msg="负高度")
   let bad2 = @paginate.Block::{
     id: "y",
+    text: "",
     kind: BKText,
+    list_ordered: false,
+    list_depth: 0,
+    list_index: 0,
     height: 10.0,
     line_height: 0.0,
     lines: 5,

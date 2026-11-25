@@ -52,6 +52,16 @@ pub(all) struct Metadata {
   mut language : String
   /// `(id, 值)`，来自 `dc:identifier`。
   mut identifiers : Array[(String, String)]
+  /// 以下 Dublin Core 元素在 EPUB 3.3 中均为 Repeatable，
+  /// 数组保序保留全部值；单数槽位只作为兼容旧 API 的「首值」。
+  mut publishers : Array[String]
+  mut dates : Array[String]
+  mut descriptions : Array[String]
+  mut sources : Array[String]
+  mut types : Array[String]
+  mut coverages : Array[String]
+  mut relations : Array[String]
+  mut formats : Array[String]
   mut publisher : String
   mut date : String
   mut description : String
@@ -63,6 +73,9 @@ pub(all) struct Metadata {
   /// 封面图在归档内的规范路径；无法确定时为空串。
   mut cover_path : String
   mut page_progression_direction : String
+  /// 创作者偏好（§8.2/§8.3）：阅读系统可忽略，但语义应可查询。
+  mut rendition_layout : String
+  mut rendition_flow : String
 }
 
 ///|
@@ -75,6 +88,14 @@ pub fn empty_metadata() -> Metadata {
     contributors: [],
     language: "",
     identifiers: [],
+    publishers: [],
+    dates: [],
+    descriptions: [],
+    sources: [],
+    types: [],
+    coverages: [],
+    relations: [],
+    formats: [],
     publisher: "",
     date: "",
     description: "",
@@ -84,6 +105,8 @@ pub fn empty_metadata() -> Metadata {
     modified: "",
     cover_path: "",
     page_progression_direction: "",
+    rendition_layout: "",
+    rendition_flow: "",
   }
 }
 

@@ -223,6 +223,20 @@ fn push_warning(warnings : Array[String], msg : String) -> Unit {
 }
 
 ///|
+/// §D.3.10：role 的词汇表基于 MARC relators。
+/// 自定义 scheme 的 role 不能覆盖作者角色，否则会给出错误语义。
+fn refines_role(md : Metadata, target : String) -> String {
+  for r in md.refines {
+    if r.target == target &&
+      r.property == "role" &&
+      @util.contains(r.scheme, "marc:relators") {
+      return @util.ascii_lower(r.value)
+    }
+  }
+  ""
+}
+
+///|
 fn parse_metadata(
   opf_path : String,
   el : @xml.Element,
@@ -271,8 +285,9 @@ fn parse_metadata(
         },
         id: @util.trim(@xml.attr_or_empty(c, "id")),
       })
-      // 主标题仍是文档顺序首个，保持既有 `title` 字段语义不变。
-      if md.title.length() == 0 {
+      // 规范：文档顺序首个 dc:title 就是主标题，即使其文本为空。
+      // 旧实现取首个非空，会把空标题悄悄换成第二标题。
+      if md.titles.length() == 1 {
         md.title = value
       }
     } else if name == "creator" {
@@ -285,14 +300,30 @@ fn parse_metadata(
         let refined_role = if cid.length() == 0 {
           ""
         } else {
-          refine(md, cid, "role")
+          refines_role(md, cid)
         }
         let r = if refined_role.length() > 0 {
-          @util.ascii_lower(refined_role)
+          refined_role
         } else if inline_role.length() > 0 {
           inline_role
         } else {
           "aut"
+        }
+        // EPUB2 遗留 `opf:file-as`；EPUB3 的 <meta refines> 优先。
+        if cid.length() > 0 && refine(md, cid, "file-as").length() == 0 {
+          match @xml.attr_ci(c, "file-as") {
+            Some(file_as) =>
+              if @util.trim(file_as).length() > 0 {
+                md.refines.push(RefineInfo::{
+                  target: cid,
+                  property: "file-as",
+                  value: @util.trim(file_as),
+                  scheme: "",
+                  lang: "",
+                })
+              }
+            None => ()
+          }
         }
         md.creators.push((cname, r))
       }
@@ -308,12 +339,38 @@ fn parse_metadata(
       if v.length() > 0 {
         md.identifiers.push((lower_attr_to_raw(@xml.attr_ci(c, "id")), v))
       }
-    } else if name == "publisher" && md.publisher.length() == 0 {
-      md.publisher = @util.trim(@xml.text_content(c))
-    } else if name == "date" && md.date.length() == 0 {
-      md.date = @util.trim(@xml.text_content(c))
-    } else if name == "description" && md.description.length() == 0 {
-      md.description = @util.trim(@xml.text_content(c))
+    } else if name == "publisher" {
+      let v = @util.trim(@xml.text_content(c))
+      md.publishers.push(v)
+      if md.publisher.length() == 0 {
+        md.publisher = v
+      }
+    } else if name == "date" {
+      let v = @util.trim(@xml.text_content(c))
+      md.dates.push(v)
+      if md.date.length() == 0 {
+        md.date = v
+      }
+    } else if name == "description" {
+      let v = @util.trim(@xml.text_content(c))
+      md.descriptions.push(v)
+      if md.description.length() == 0 {
+        md.description = v
+      }
+    } else if name == "source" {
+      let v = @util.trim(@xml.text_content(c))
+      md.sources.push(v)
+      if md.source.length() == 0 {
+        md.source = v
+      }
+    } else if name == "type" {
+      md.types.push(@util.trim(@xml.text_content(c)))
+    } else if name == "coverage" {
+      md.coverages.push(@util.trim(@xml.text_content(c)))
+    } else if name == "relation" {
+      md.relations.push(@util.trim(@xml.text_content(c)))
+    } else if name == "format" {
+      md.formats.push(@util.trim(@xml.text_content(c)))
     } else if name == "rights" {
       let v = @util.trim(@xml.text_content(c))
       if v.length() > 0 {
@@ -324,8 +381,6 @@ fn parse_metadata(
       if v.length() > 0 {
         md.subjects.push(v)
       }
-    } else if name == "source" && md.source.length() == 0 {
-      md.source = @util.trim(@xml.text_content(c))
     } else if name == "meta" {
       let prop = @util.ascii_lower(@xml.attr_or_empty(c, "property"))
       let mname = @util.ascii_lower(@xml.attr_or_empty(c, "name"))
@@ -339,8 +394,10 @@ fn parse_metadata(
           Some(id) => cover_id.push(@util.trim(id))
           None => ()
         }
-      } else if prop == "rendition:layout" || prop == "rendition:flow" {
-        ()
+      } else if prop == "rendition:layout" && md.rendition_layout.length() == 0 {
+        md.rendition_layout = body
+      } else if prop == "rendition:flow" && md.rendition_flow.length() == 0 {
+        md.rendition_flow = body
       }
     }
   }

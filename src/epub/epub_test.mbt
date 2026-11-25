@@ -597,3 +597,93 @@ fn opf_with_guide() -> String {
     "</package>",
   ])
 }
+
+///|
+/// 审查 P2：Repeatable Dublin Core 元素必须全保留，role scheme 不能误判。
+test "可重复 Dublin Core 元素全保留，非法 role scheme 不覆盖作者" {
+  let opf = @util.join_nl([
+    "<?xml version=\"1.0\"?>", "<package version=\"3.0\" unique-identifier=\"uid\">",
+    "  <metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">", "    <dc:title>T</dc:title>",
+    "    <dc:creator id=\"c1\">A</dc:creator>", "    <meta refines=\"#c1\" property=\"role\" scheme=\"http://example.org/other\">xyz</meta>",
+    "    <meta refines=\"#c1\" property=\"role\" scheme=\"marc:relators\">ill</meta>",
+    "    <dc:publisher>P1</dc:publisher><dc:publisher>P2</dc:publisher>", "    <dc:description>D1</dc:description><dc:description>D2</dc:description>",
+    "    <dc:date>2026-01-01</dc:date><dc:date>2026-02-02</dc:date>", "    <dc:source>S1</dc:source><dc:source>S2</dc:source>",
+    "    <dc:type>Text</dc:type><dc:coverage>World</dc:coverage>", "    <dc:relation>R</dc:relation><dc:format>application/xhtml+xml</dc:format>",
+    "  </metadata>", "  <manifest/>", "  <spine/>", "</package>",
+  ])
+  match @epub.parse_opf("OEBPS/content.opf", opf, false) {
+    Err(_) => panic()
+    Ok(info) => {
+      assert_true(
+        info.metadata.publishers.length() == 2,
+        msg="两个 publisher",
+      )
+      assert_true(
+        info.metadata.descriptions.length() == 2,
+        msg="两个 description",
+      )
+      assert_true(info.metadata.dates.length() == 2, msg="两个 date")
+      assert_true(info.metadata.sources.length() == 2, msg="两个 source")
+      assert_true(info.metadata.types.length() == 1, msg="dc:type 有槽位")
+      assert_true(
+        info.metadata.coverages.length() == 1,
+        msg="dc:coverage 有槽位",
+      )
+      assert_true(
+        info.metadata.relations.length() == 1,
+        msg="dc:relation 有槽位",
+      )
+      assert_true(
+        info.metadata.formats.length() == 1,
+        msg="dc:format 有槽位",
+      )
+      assert_true(
+        info.metadata.creators[0].1 == "ill",
+        msg="只采纳 MARC scheme 的 role：" + info.metadata.creators[0].1,
+      )
+    }
+  }
+}
+
+///|
+/// 审查 P2：EPUB2 `opf:file-as` 应写入 refinements，供宿主查询。
+test "EPUB2 opf:file-as 保留在 refinements 中" {
+  let opf = @util.join_nl([
+    "<?xml version=\"1.0\"?>", "<package version=\"2.0\" unique-identifier=\"uid\">",
+    "  <metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:opf=\"http://www.idpf.org/2007/opf\">",
+    "    <dc:title>T</dc:title>", "    <dc:creator id=\"c1\" opf:file-as=\"DOE, John\">John Doe</dc:creator>",
+    "  </metadata>", "  <manifest/>", "  <spine/>", "</package>",
+  ])
+  match @epub.parse_opf("OEBPS/content.opf", opf, false) {
+    Err(_) => panic()
+    Ok(info) =>
+      assert_true(
+        @epub.refine(info.metadata, "c1", "file-as") == "DOE, John",
+        msg="file-as 可查询",
+      )
+  }
+}
+
+///|
+/// 创作者偏好虽可忽略，也应在元数据中可查询。
+test "rendition:layout 与 rendition:flow 不再被丢弃" {
+  let opf = @util.join_nl([
+    "<?xml version=\"1.0\"?>", "<package version=\"3.0\" unique-identifier=\"uid\">",
+    "  <metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">", "    <dc:title>T</dc:title>",
+    "    <meta property=\"rendition:layout\">pre-paginated</meta>", "    <meta property=\"rendition:flow\">scrolled-continuous</meta>",
+    "  </metadata>", "  <manifest/>", "  <spine/>", "</package>",
+  ])
+  match @epub.parse_opf("OEBPS/content.opf", opf, false) {
+    Err(_) => panic()
+    Ok(info) => {
+      assert_true(
+        info.metadata.rendition_layout == "pre-paginated",
+        msg="layout",
+      )
+      assert_true(
+        info.metadata.rendition_flow == "scrolled-continuous",
+        msg="flow",
+      )
+    }
+  }
+}

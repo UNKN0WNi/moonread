@@ -34,6 +34,9 @@ pub(all) struct FixtureSpec {
   /// true 时 OPF 写 DOCTYPE 内部实体声明，标题用 &title; 引用；
   /// 章节正文用命名空间前缀元素引用实体（EPUB 3.3 合法输入）。
   mut internal_entities : Bool
+  /// 语义对账变体：每条只针对一项 EPUB 3.3 条款，避免「另一条路径恰好通过」
+  /// 掩盖实现缺陷。取值见 `all_fixtures()`。
+  mut semantic_variant : String
 }
 
 ///|
@@ -55,6 +58,7 @@ pub fn simple_spec() -> FixtureSpec {
     encrypted: false,
     rich_metadata: false,
     internal_entities: false,
+    semantic_variant: "",
   }
 }
 
@@ -93,10 +97,17 @@ fn opf_xml(spec : FixtureSpec) -> String {
     lines.push("]>")
   }
   let ver = if spec.epub3 { "3.0" } else { "2.0" }
+  let lang_attr = if spec.semantic_variant == "package-lang" {
+    " xml:lang=\"zh-Hant\""
+  } else {
+    ""
+  }
   lines.push(
     "<package xmlns=\"http://www.idpf.org/2007/opf\" version=\"" +
     ver +
-    "\" unique-identifier=\"uid\">",
+    "\"" +
+    lang_attr +
+    " unique-identifier=\"uid\">",
   )
   lines.push("  <metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">")
   lines.push(
@@ -139,12 +150,26 @@ fn opf_xml(spec : FixtureSpec) -> String {
     lines.push("    <dc:creator>" + spec.creator + "</dc:creator>")
   }
   lines.push("    <dc:language>" + spec.language + "</dc:language>")
+  if spec.semantic_variant == "multivalue-dc" {
+    lines.push(
+      "    <dc:publisher>P1</dc:publisher><dc:publisher>P2</dc:publisher>",
+    )
+    lines.push(
+      "    <dc:description>D1</dc:description><dc:description>D2</dc:description>",
+    )
+    lines.push("    <dc:date>2026-01-01</dc:date><dc:date>2026-02-02</dc:date>")
+    lines.push("    <dc:source>S1</dc:source><dc:source>S2</dc:source>")
+    lines.push("    <dc:type>Text</dc:type><dc:coverage>World</dc:coverage>")
+    lines.push(
+      "    <dc:relation>R</dc:relation><dc:format>application/xhtml+xml</dc:format>",
+    )
+  }
   if spec.epub3 {
     lines.push(
       "    <meta property=\"dcterms:modified\">2026-11-19T00:00:00Z</meta>",
     )
   }
-  if spec.with_cover {
+  if spec.with_cover || spec.semantic_variant == "cover-legacy" {
     lines.push("    <meta name=\"cover\" content=\"cover-img\"/>")
   }
   lines.push("  </metadata>")
@@ -168,9 +193,28 @@ fn opf_xml(spec : FixtureSpec) -> String {
       "    <item id=\"css\" href=\"style.css\" media-type=\"text/css\"/>",
     )
   }
+  if spec.semantic_variant == "cover-legacy" {
+    // EPUB2 遗留方式：没有 properties=cover-image，且另一张图排在前面。
+    lines.push(
+      "    <item id=\"other-img\" href=\"other.png\" media-type=\"image/png\"/>",
+    )
+    lines.push(
+      "    <item id=\"cover-img\" href=\"cover.png\" media-type=\"image/png\"/>",
+    )
+  }
   if spec.with_cover {
     lines.push(
       "    <item id=\"cover-img\" href=\"cover.png\" media-type=\"image/png\" properties=\"cover-image\"/>",
+    )
+  }
+  if spec.semantic_variant == "fallback" {
+    lines.push(
+      "    <item id=\"foreign\" href=\"foreign.jpg\" media-type=\"image/jpeg\" fallback=\"ch1\"/>",
+    )
+  }
+  if spec.semantic_variant == "svg" {
+    lines.push(
+      "    <item id=\"svg\" href=\"page.svg\" media-type=\"image/svg+xml\"/>",
     )
   }
   if spec.with_ncx {
@@ -186,6 +230,12 @@ fn opf_xml(spec : FixtureSpec) -> String {
   for kv in spec.chapters {
     lines.push("    <itemref idref=\"" + kv.0 + "\"/>")
   }
+  if spec.semantic_variant == "fallback" {
+    lines.push("    <itemref idref=\"foreign\"/>")
+  }
+  if spec.semantic_variant == "svg" {
+    lines.push("    <itemref idref=\"svg\"/>")
+  }
   if spec.broken_idref {
     lines.push("    <itemref idref=\"ghost\"/>")
   }
@@ -196,6 +246,21 @@ fn opf_xml(spec : FixtureSpec) -> String {
 
 ///|
 fn nav_xhtml(spec : FixtureSpec) -> String {
+  if spec.semantic_variant == "nav-multivalue" {
+    let item_lines : Array[String] = []
+    for kv in spec.chapters {
+      item_lines.push(
+        "<li><a href=\"" + kv.0 + ".xhtml\">" + kv.1 + "</a></li>",
+      )
+    }
+    let items = @util.join_nl(item_lines)
+    return @util.join_nl([
+      "<?xml version=\"1.0\" encoding=\"utf-8\"?>", "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:epub=\"http://www.idpf.org/2007/ops\">",
+      "<head><title>目录</title></head><body>", "<nav epub:type=\"landmarks\"><ol><li><a href=\"ch1.xhtml\">地标项</a></li></ol></nav>",
+      "<nav epub:type=\"toc landmarks\"><h1>目录</h1><ol>", items, "</ol></nav>",
+      "</body></html>",
+    ])
+  }
   let lines : Array[String] = []
   lines.push("<?xml version=\"1.0\" encoding=\"utf-8\"?>")
   lines.push(
@@ -320,8 +385,19 @@ pub fn build(spec : FixtureSpec) -> @container.Archive {
       ),
     )
   }
-  if spec.with_cover {
+  if spec.with_cover || spec.semantic_variant == "cover-legacy" {
     items.push(("OEBPS/cover.png", "PNG-BYTES-PLACEHOLDER"))
+  }
+  if spec.semantic_variant == "cover-legacy" {
+    items.push(("OEBPS/other.png", "PNG-BYTES-PLACEHOLDER"))
+  }
+  if spec.semantic_variant == "fallback" {
+    items.push(("OEBPS/foreign.jpg", "JPEG-BYTES-PLACEHOLDER"))
+  }
+  if spec.semantic_variant == "svg" {
+    items.push(
+      ("OEBPS/page.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\"/>"),
+    )
   }
   if spec.mimetype_last {
     for kv in head {
@@ -399,5 +475,14 @@ pub fn all_fixtures() -> Array[(String, FixtureSpec)] {
   s17.title = "内部实体书名：月亮与六便士"
   s17.internal_entities = true
   out.push(("internal-entities", s17))
+  // 语义对账：每条只验证一个规范条款，避免另一条路径掩盖缺陷。
+  for
+    variant in [
+      "fallback", "svg", "nav-multivalue", "cover-legacy", "package-lang", "multivalue-dc",
+    ] {
+    let s = simple_spec()
+    s.semantic_variant = variant
+    out.push(("semantic-" + variant, s))
+  }
   out
 }

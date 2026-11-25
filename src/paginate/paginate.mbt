@@ -146,7 +146,14 @@ pub(all) enum BlockKind {
 pub(all) struct Block {
   /// 稳定标识，用于把分片结果映射回 DOM 节点。
   id : String
+  /// 块承载的可见文本（表格等原子块也用它承载单元格文字），
+  /// 供「不丢内容」内容层不变式核验。
+  text : String
   kind : BlockKind
+  /// 列表语义：`ol`/`li` 产出的块带上有序标记、层级与序号。
+  list_ordered : Bool
+  list_depth : Int32
+  list_index : Int32
   height : Double
   /// 行高。不可拆块为 0.0。
   line_height : Double
@@ -167,7 +174,11 @@ pub fn text_block(id : String, lines : Int32, line_height : Double) -> Block {
   let lh = if lines > 0 { line_height } else { 0.0 }
   Block::{
     id,
+    text: "",
     kind: BKText,
+    list_ordered: false,
+    list_depth: 0,
+    list_index: 0,
     height: lh * lines.to_double(),
     line_height: lh,
     lines: if lines > 0 {
@@ -184,11 +195,66 @@ pub fn text_block(id : String, lines : Int32, line_height : Double) -> Block {
 }
 
 ///|
+/// 给块附上可见文本，供内容层不变式核验。
+pub fn with_text(b : Block, text : String) -> Block {
+  Block::{
+    id: b.id,
+    text,
+    kind: b.kind,
+    list_ordered: b.list_ordered,
+    list_depth: b.list_depth,
+    list_index: b.list_index,
+    height: b.height,
+    line_height: b.line_height,
+    lines: b.lines,
+    splittable: b.splittable,
+    break_before: b.break_before,
+    break_after: b.break_after,
+    chapter_start: b.chapter_start,
+    keep_with_next: b.keep_with_next,
+  }
+}
+
+///|
+/// 列表项块：携带 ol/ul 区分、层级与 1-based 序号。
+pub fn list_block(
+  id : String,
+  text : String,
+  lines : Int32,
+  line_height : Double,
+  ordered : Bool,
+  depth : Int32,
+  index : Int32,
+) -> Block {
+  let base = text_block(id, lines, line_height)
+  Block::{
+    id: base.id,
+    text,
+    kind: BKList,
+    list_ordered: ordered,
+    list_depth: depth,
+    list_index: index,
+    height: base.height,
+    line_height: base.line_height,
+    lines: base.lines,
+    splittable: base.splittable,
+    break_before: base.break_before,
+    break_after: base.break_after,
+    chapter_start: base.chapter_start,
+    keep_with_next: base.keep_with_next,
+  }
+}
+
+///|
 /// 标题块：不可拆，且要求与下一块同页、总从新页开始。
 pub fn heading_block(id : String, height : Double) -> Block {
   Block::{
     id,
+    text: "",
     kind: BKHeading,
+    list_ordered: false,
+    list_depth: 0,
+    list_index: 0,
     height,
     line_height: 0.0,
     lines: 0,
@@ -204,7 +270,11 @@ pub fn heading_block(id : String, height : Double) -> Block {
 pub fn atomic_block(id : String, kind : BlockKind, height : Double) -> Block {
   Block::{
     id,
+    text: "",
     kind,
+    list_ordered: false,
+    list_depth: 0,
+    list_index: 0,
     height,
     line_height: 0.0,
     lines: 0,
@@ -226,7 +296,11 @@ pub fn image_block(id : String, height : Double) -> Block {
 pub fn with_chapter_start(b : Block) -> Block {
   Block::{
     id: b.id,
+    text: b.text,
     kind: b.kind,
+    list_ordered: b.list_ordered,
+    list_depth: b.list_depth,
+    list_index: b.list_index,
     height: b.height,
     line_height: b.line_height,
     lines: b.lines,
@@ -242,7 +316,11 @@ pub fn with_chapter_start(b : Block) -> Block {
 pub fn with_break_before(b : Block) -> Block {
   Block::{
     id: b.id,
+    text: b.text,
     kind: b.kind,
+    list_ordered: b.list_ordered,
+    list_depth: b.list_depth,
+    list_index: b.list_index,
     height: b.height,
     line_height: b.line_height,
     lines: b.lines,
@@ -258,7 +336,11 @@ pub fn with_break_before(b : Block) -> Block {
 pub fn with_break_after(b : Block) -> Block {
   Block::{
     id: b.id,
+    text: b.text,
     kind: b.kind,
+    list_ordered: b.list_ordered,
+    list_depth: b.list_depth,
+    list_index: b.list_index,
     height: b.height,
     line_height: b.line_height,
     lines: b.lines,
@@ -536,6 +618,15 @@ pub fn floor_lines(v : Double, unit : Double) -> Int32 {
 }
 
 // ---------------- 不变式检查（） ----------------
+
+///|
+/// 真实含义是「分页阶段高度守恒」，不含 DOM→度量块阶段的文本核验。
+pub fn invariant_no_pagination_loss(
+  blocks : Array[Block],
+  paginated : Paginated,
+) -> Bool {
+  invariant_no_content_loss(blocks, paginated)
+}
 
 ///|
 /// 不变式 1：分页不丢内容。

@@ -59,14 +59,30 @@ fn probe_file(path : String, key : String) -> (String, @jsonio.Json) {
         ("chapters", @jsonio.j_int(0)),
         ("toc_items", @jsonio.j_int(0)),
         ("resources", @jsonio.j_int(0)),
+        ("cover", @jsonio.j_str("")),
+        ("title_lang", @jsonio.j_str("")),
+        ("publishers", @jsonio.j_arr([])),
       ]
-    Some(b) =>
+    Some(b) => {
+      let publishers : Array[@jsonio.Json] = []
+      for p in b.epub.metadata.publishers {
+        publishers.push(@jsonio.j_str(p))
+      }
+      let title_lang = if b.epub.metadata.titles.length() > 0 {
+        b.epub.metadata.titles[0].lang
+      } else {
+        ""
+      }
       [
         ("title", @jsonio.j_str(b.epub.metadata.title)),
         ("chapters", @jsonio.j_int(@epub.chapter_paths(b.epub).length())),
         ("toc_items", @jsonio.j_int(toc_count(b.epub))),
         ("resources", @jsonio.j_int(b.epub.manifest.length())),
+        ("cover", @jsonio.j_str(b.epub.metadata.cover_path)),
+        ("title_lang", @jsonio.j_str(title_lang)),
+        ("publishers", @jsonio.j_arr(publishers)),
       ]
+    }
   }
   (key, @jsonio.j_obj(fields))
 }

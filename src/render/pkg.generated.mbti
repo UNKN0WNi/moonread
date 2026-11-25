@@ -16,9 +16,13 @@ pub fn collapsed_text(@xml.Element) -> String
 
 pub fn display_width(Char) -> Int32
 
+pub fn invariant_visible_text_preserved(@xml.Element, Array[MeasuredBlock]) -> Bool
+
 pub fn lines_of(String, Int32) -> Int32
 
 pub fn measure(Backend, RenderRequest) -> Result[Array[MeasuredBlock], String]
+
+pub fn preserved_text(@xml.Element) -> String
 
 pub fn total_height(Array[MeasuredBlock]) -> Double
 
