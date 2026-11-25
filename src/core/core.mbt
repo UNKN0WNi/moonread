@@ -182,6 +182,13 @@ pub fn render_chapter(b : Book, index : Int32) -> Result[ChapterPages, String] {
       "不变式 visible_text_preserved（正文可见字符不丢失）未通过——这是缺陷，请附带本书与配置上报",
     )
   }
+  for id in @paginate.oversized_unbreakable_blocks(marked, policy) {
+    warnings.push(
+      "块 '" +
+      id +
+      "' 是不可拆块且高度超过整页内容区，已独占一页但仍会溢出；请缩短标题或调大页面",
+    )
+  }
   if !@paginate.invariant_monotonic(result) {
     warnings.push(
       "不变式 3（单调）未通过——这是缺陷，请附带本书与配置上报",

@@ -163,7 +163,7 @@
 
 断言：`DOCTYPE 外部实体：按 EPUB 规范拒绝`、`DOCTYPE 参数实体与循环引用被拒绝`、`DOCTYPE 外部标识符仍可解析`。
 
-实现位置：`src/xml/xml.mbt` 的 `skip_doctype` / `parse_internal_subset` / `decode_text_nodes` / `decode_entities_in` / `resolve_entity`；端到端断言在 `src/epub/epub_test.mbt`。磁盘夹具 `internal-entities.epub` 与内存 fixture 成对生成，直接进入 25 本内核对账。
+实现位置：`src/xml/xml.mbt` 的 `skip_doctype` / `parse_internal_subset` / `decode_text_nodes` / `decode_entities_in` / `resolve_entity`；端到端断言在 `src/epub/epub_test.mbt`。磁盘夹具 `internal-entities.epub` 与内存 fixture 成对生成，直接进入 27 本内核对账。
 
 ## 2.7 语义保真复审后的修正（2026-11-25）
 
@@ -186,6 +186,18 @@
 
 不变式也补齐：`invariant_no_content_loss` 改称 `invariant_no_pagination_loss`（只承诺分页高度守恒），新增 `invariant_visible_text_preserved` 核对源文档可见字符是否全部进入块文本。后者在 `core.open_chapter` 中以告警暴露，避免 DOM→度量块阶段静默丢字。
 
+## 2.8 复审残留项的收口（2026-11-25）
+
+复审报告 `moonread-conformance-rereview.md` 残留 3 项 P3，均已收口：
+
+| 项 | 合法输入 / 边界 → 预期结果 | 断言 / 夹具 |
+|---|---|---|
+| R1 `epub:type` 前缀写死 | `<html xmlns:o="http://www.idpf.org/2007/ops">` + `o:type="toc landmarks"` → 命中目录 nav；普通无前缀 `type` 不算 | `绑定到 OPS 命名空间的任意前缀…`；`semantic-nav-prefix.epub`。沿 DOM 作用域累积绑定到 OPS URI 的前缀，默认保留 `epub` 兼容省略声明的历史语料 |
+| R2 role scheme 子串误判 | `scheme="http://evil.example/marc:relators"` → 不采纳该 role，回退 `aut` | `role scheme 子串匹配不再覆盖作者角色`；`semantic-scheme-substring.epub`（探针对账 `creator_role=aut`） |
+| R3 超高不可拆标题 | 标题高于整页内容区 → 仍独占一页不丢内容，但单独给出溢出告警 | `超高不可拆块被检出，普通标题不误报`；`oversized_unbreakable_blocks` 在 `core.open_chapter` 中输出告警 |
+
+另外，`mimetype` 的 STORED 压缩方式仍无法校验：当前 `Archive` 模型不记录 ZIP 压缩方法，属只读场景的检测缺口，不影响语义保真。
+
 ## 3. 可复现的验证命令
 
 ```bash
@@ -196,9 +208,9 @@ bash scripts/ci.sh
 python3 tools/corpus_check.py --require-manifest --require-probe
 ```
 
-当前结果：四端各 147 项测试通过；跨端输出一致；25 本 EPUB（23 自建 + 2 第三方公版）内核对账全部通过；`moon prove` 在 CI 的 Linux 任务中由 SMT 求解器验证。
+当前结果：四端各 150 项测试通过；跨端输出一致；27 本 EPUB（25 自建 + 2 第三方公版）内核对账全部通过；`moon prove` 在 CI 的 Linux 任务中由 SMT 求解器验证。
 
 ## 4. 语料来源
 
-- 23 本自建最小 EPUB：由 `tools/gen_fixtures.py` 与 `src/epub/fixture.mbt` 成对生成，Apache-2.0，见 `tests/fixtures/manifest.json`。其中 `rich-metadata.epub` 承载本文 §2.2–2.4 的合法语义样例，`internal-entities.epub` 承载 §2.6 的内部实体标题与命名空间案例。
+- 25 本自建最小 EPUB：由 `tools/gen_fixtures.py` 与 `src/epub/fixture.mbt` 成对生成，Apache-2.0，见 `tests/fixtures/manifest.json`。其中 `rich-metadata.epub` 承载本文 §2.2–2.4 的合法语义样例，`internal-entities.epub` 承载 §2.6 的内部实体标题与命名空间案例，`semantic-*` 承载 §2.7–2.8 的逐条款回归。
 - 2 本第三方公版 EPUB：来源 URL 与 SHA-256 钉在 `tests/corpus/manifest.json`，避免上游静默变更。

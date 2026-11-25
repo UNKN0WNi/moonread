@@ -227,9 +227,7 @@ fn push_warning(warnings : Array[String], msg : String) -> Unit {
 /// 自定义 scheme 的 role 不能覆盖作者角色，否则会给出错误语义。
 fn refines_role(md : Metadata, target : String) -> String {
   for r in md.refines {
-    if r.target == target &&
-      r.property == "role" &&
-      @util.contains(r.scheme, "marc:relators") {
+    if r.target == target && r.property == "role" && r.scheme == "marc:relators" {
       return @util.ascii_lower(r.value)
     }
   }
@@ -775,19 +773,83 @@ pub fn parse_guide(
 // ---------------- nav.xhtml（EPUB3） ----------------
 
 ///|
-/// `epub:type` 是空白分隔的属性值列表（EPUB 3.3 §C.2）。
-/// 只认带 `epub:` 前缀的属性，避免把普通 `type="toc"` 误判为导航语义。
-fn has_epub_type(el : @xml.Element, want : String) -> Bool {
+/// EPUB 3.3 §C.2：OPS 语义词汇表的命名空间 URI。
+const OPS_NS : String = "http://www.idpf.org/2007/ops"
+
+///|
+/// 命名空间前缀只是 URI 的绑定细节，不能写死 `epub:`。
+/// 沿 DOM 向下遍历时累积当前作用域里绑定到 OPS 命名空间的前缀；
+/// 默认 `epub` 始终保留，兼容省略 xmlns 声明的历史语料。
+/// 无前缀的 `type` 永不接受，避免把普通 HTML `type="toc"` 误判为导航语义。
+fn with_ops_prefixes(
+  el : @xml.Element,
+  active : Array[String],
+) -> Array[String] {
+  let out : Array[String] = []
+  for p in active {
+    out.push(p)
+  }
   for kv in el.attrs {
-    if @util.ascii_lower(kv.0) == "epub:type" {
-      let normalized = @util.replace_all(
-        @util.replace_all(@util.replace_all(kv.1, "\t", " "), "\n", " "),
-        "\r",
-        " ",
-      )
-      for token in @util.split_char(normalized, ' ') {
-        if @util.ascii_lower(token) == want {
-          return true
+    let name = @util.ascii_lower(kv.0)
+    if @util.starts_with(name, "xmlns:") {
+      let prefix = @util.slice_string(name, 6, @util.to_chars(name).length())
+      if @util.trim(@util.ascii_lower(kv.1)) == OPS_NS &&
+        !array_has(out, prefix) {
+        out.push(prefix)
+      }
+    }
+  }
+  out
+}
+
+///|
+fn array_has(xs : Array[String], want : String) -> Bool {
+  for x in xs {
+    if x == want {
+      return true
+    }
+  }
+  false
+}
+
+///|
+/// 收集所有 nav 及其所在作用域的 OPS 前缀（文档序）。
+fn collect_navs(
+  el : @xml.Element,
+  active : Array[String],
+  out : Array[(@xml.Element, Array[String])],
+) -> Unit {
+  let next = with_ops_prefixes(el, active)
+  if @xml.tag_is(el, "nav") {
+    out.push((el, next))
+  }
+  for c in @xml.child_elements(el) {
+    collect_navs(c, next, out)
+  }
+}
+
+///|
+/// `epub:type` 是空白分隔的属性值列表（EPUB 3.3 §C.2）。
+/// 按「绑定到 OPS 命名空间的前缀 + local name `type`」判定，
+/// 因此 `epub:type` 与 `o:type`（`xmlns:o=OPS_NS`）等价，普通 `type` 不算。
+fn has_epub_type(
+  el : @xml.Element,
+  want : String,
+  prefixes : Array[String],
+) -> Bool {
+  for kv in el.attrs {
+    let name = @util.ascii_lower(kv.0)
+    for p in prefixes {
+      if name == p + ":type" {
+        let normalized = @util.replace_all(
+          @util.replace_all(@util.replace_all(kv.1, "\t", " "), "\n", " "),
+          "\r",
+          " ",
+        )
+        for token in @util.split_char(normalized, ' ') {
+          if @util.ascii_lower(token) == want {
+            return true
+          }
         }
       }
     }
@@ -807,15 +869,16 @@ pub fn parse_nav(
     Ok(root) => {
       let mut toc_nav : @xml.Element? = None
       let toc_candidates : Array[@xml.Element] = []
-      for n in @xml.descendants(root) {
-        if @xml.tag_is(n, "nav") {
-          // §C.2：`epub:type` 是空白分隔的属性值列表，`toc landmarks`
-          // 完全合法；必须按 token 判定，且不能把无前缀的 type 当 epub:type。
-          if has_epub_type(n, "toc") {
-            toc_nav = Some(n)
-          } else {
-            toc_candidates.push(n)
-          }
+      let navs : Array[(@xml.Element, Array[String])] = []
+      collect_navs(root, ["epub"], navs)
+      for (n, prefixes) in navs {
+        // §C.2：`epub:type` 是空白分隔的属性值列表，`toc landmarks`
+        // 完全合法；必须按 token 判定，且不能把无前缀的 type 当 epub:type。
+        // 前缀按 xmlns 绑定解析，别的前缀（如 o:）绑定到 OPS URI 时同样有效。
+        if has_epub_type(n, "toc", prefixes) {
+          toc_nav = Some(n)
+        } else {
+          toc_candidates.push(n)
         }
       }
       if toc_nav == None && toc_candidates.length() > 0 {

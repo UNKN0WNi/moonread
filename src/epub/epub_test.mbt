@@ -514,6 +514,44 @@ test "epub:type=\"toc landmarks\" 命中目录而不是地标" {
 }
 
 ///|
+/// 复审 R1：OPS 命名空间的前缀只是绑定细节，`o:type` 与 `epub:type` 等价。
+test "绑定到 OPS 命名空间的任意前缀都能命中 toc nav" {
+  let nav = @util.join_nl([
+    "<?xml version=\"1.0\"?>", "<html xmlns:o=\"http://www.idpf.org/2007/ops\">",
+    "<body>", "<nav o:type=\"landmarks\"><ol><li><a href=\"a.xhtml\">地标项</a></li></ol></nav>",
+    "<nav o:type=\"toc landmarks\"><ol><li><a href=\"b.xhtml\">目录项</a></li></ol></nav>",
+    "</body></html>",
+  ])
+  match @epub.parse_nav("OEBPS/nav.xhtml", nav) {
+    Err(_) => panic()
+    Ok((points, warnings)) => {
+      assert_true(points.length() == 1, msg="一项目录")
+      assert_true(
+        points[0].label == "目录项",
+        msg="前缀绑定命中：" + points[0].label,
+      )
+      assert_true(warnings.length() == 0, msg="不应有降级告警")
+    }
+  }
+  // 无前缀的普通 type 仍不得被当作 OPS 语义。
+  let plain = @util.join_nl([
+    "<?xml version=\"1.0\"?>", "<html><body>", "<nav type=\"landmarks\"><ol><li><a href=\"a.xhtml\">地标项</a></li></ol></nav>",
+    "<nav type=\"toc\"><ol><li><a href=\"b.xhtml\">目录项</a></li></ol></nav>",
+    "</body></html>",
+  ])
+  match @epub.parse_nav("OEBPS/nav.xhtml", plain) {
+    Err(_) => panic()
+    Ok((points, warnings)) => {
+      assert_true(
+        points[0].label == "地标项",
+        msg="普通 type 不算 OPS 语义",
+      )
+      assert_true(warnings.length() == 1, msg="给出降级告警")
+    }
+  }
+}
+
+///|
 /// 审查 P1-4：EPUB2 遗留封面读 `meta@content`，不是元素文本。
 test "EPUB2 封面：meta name=cover content=ITEM-ID 不被第一张图冒充" {
   let opf = @util.join_nl([
@@ -642,6 +680,26 @@ test "可重复 Dublin Core 元素全保留，非法 role scheme 不覆盖作者
         msg="只采纳 MARC scheme 的 role：" + info.metadata.creators[0].1,
       )
     }
+  }
+}
+
+///|
+/// 复审 R2：scheme 必须精确等于 marc:relators，子串命中属于误判。
+test "role scheme 子串匹配不再覆盖作者角色" {
+  let opf = @util.join_nl([
+    "<?xml version=\"1.0\"?>", "<package version=\"3.0\" unique-identifier=\"uid\">",
+    "  <metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">", "    <dc:title>T</dc:title>",
+    "    <dc:creator id=\"c1\">A</dc:creator>", "    <meta refines=\"#c1\" property=\"role\" scheme=\"http://evil.example/marc:relators\">xyz</meta>",
+    "  </metadata>", "  <manifest/>", "  <spine/>", "</package>",
+  ])
+  match @epub.parse_opf("OEBPS/content.opf", opf, false) {
+    Err(_) => panic()
+    Ok(info) =>
+      assert_true(
+        info.metadata.creators[0].1 == "aut",
+        msg="非法 scheme 回退默认作者角色：" +
+          info.metadata.creators[0].1,
+      )
   }
 }
 

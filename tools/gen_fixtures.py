@@ -94,6 +94,13 @@ def opf(title, creator, lang, chapters, epub3, with_nav, with_ncx, with_css,
             '    <meta refines="#creator-main" property="alternate-script" xml:lang="ja">著者サンプル</meta>',
             '    <meta refines="#creator-main" property="file-as">MOONBIT, </meta>',
         ]
+    elif variant == "scheme-substring":
+        # 复审 R2：scheme 含 marc:relators 子串但不是该词汇表，角色回退 aut。
+        lines += [
+            f"    <dc:title>{title}</dc:title>",
+            f'    <dc:creator id="creator-main">{creator}</dc:creator>',
+            '    <meta refines="#creator-main" property="role" scheme="http://evil.example/marc:relators">xyz</meta>',
+        ]
     else:
         lines += [
             f"    <dc:title>{title}</dc:title>",
@@ -161,14 +168,20 @@ def opf(title, creator, lang, chapters, epub3, with_nav, with_ncx, with_css,
 
 
 def nav_xhtml(chapters, rich_metadata=False, variant=""):
-    if variant == "nav-multivalue":
+    if variant in ("nav-multivalue", "nav-prefix"):
         items = "\n".join(f'<li><a href="{c}.xhtml">{t}</a></li>' for c, t in chapters)
+        if variant == "nav-prefix":
+            ns_decl = ' xmlns:o="http://www.idpf.org/2007/ops"'
+            p = "o"
+        else:
+            ns_decl = ' xmlns:epub="http://www.idpf.org/2007/ops"'
+            p = "epub"
         return (
             '<?xml version="1.0" encoding="utf-8"?>\n'
-            '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">\n'
+            f'<html xmlns="http://www.w3.org/1999/xhtml"{ns_decl}>\n'
             "<head><title>目录</title></head><body>\n"
-            '<nav epub:type="landmarks"><ol><li><a href="ch1.xhtml">地标项</a></li></ol></nav>\n'
-            '<nav epub:type="toc landmarks"><h1>目录</h1><ol>\n'
+            f'<nav {p}:type="landmarks"><ol><li><a href="ch1.xhtml">地标项</a></li></ol></nav>\n'
+            f'<nav {p}:type="toc landmarks"><h1>目录</h1><ol>\n'
             + items
             + "\n</ol></nav>\n</body></html>\n"
         )
@@ -258,8 +271,9 @@ def specs():
     add("malformed-opf", with_nav=True)
     add("rich-metadata", title="Rich Metadata Sample", rich_metadata=True)
     add("internal-entities", title="内部实体书名：月亮与六便士", internal_entities=True)
-    for variant in ("fallback", "svg", "nav-multivalue", "cover-legacy",
-                    "package-lang", "multivalue-dc"):
+    for variant in ("fallback", "svg", "nav-multivalue", "nav-prefix",
+                    "cover-legacy", "package-lang", "multivalue-dc",
+                    "scheme-substring"):
         add("semantic-" + variant, variant=variant)
     return out
 
@@ -352,6 +366,9 @@ def expect_for(name, s):
         exp["title_lang"] = "zh-Hant"
     if variant == "multivalue-dc":
         exp["publishers"] = ["P1", "P2"]
+    if variant == "scheme-substring":
+        # 修复前会被子串误判为 MARC role，解析出 "xyz"。
+        exp["creator_role"] = "aut"
     return exp
 
 

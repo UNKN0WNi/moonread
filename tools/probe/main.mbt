@@ -62,6 +62,7 @@ fn probe_file(path : String, key : String) -> (String, @jsonio.Json) {
         ("cover", @jsonio.j_str("")),
         ("title_lang", @jsonio.j_str("")),
         ("publishers", @jsonio.j_arr([])),
+        ("creator_role", @jsonio.j_str("")),
       ]
     Some(b) => {
       let publishers : Array[@jsonio.Json] = []
@@ -81,6 +82,16 @@ fn probe_file(path : String, key : String) -> (String, @jsonio.Json) {
         ("cover", @jsonio.j_str(b.epub.metadata.cover_path)),
         ("title_lang", @jsonio.j_str(title_lang)),
         ("publishers", @jsonio.j_arr(publishers)),
+        (
+          "creator_role",
+          @jsonio.j_str(
+            if b.epub.metadata.creators.length() > 0 {
+              b.epub.metadata.creators[0].1
+            } else {
+              ""
+            },
+          ),
+        ),
       ]
     }
   }

@@ -145,6 +145,15 @@ fn opf_xml(spec : FixtureSpec) -> String {
     lines.push(
       "    <meta refines=\"#creator-main\" property=\"file-as\">MOONBIT, </meta>",
     )
+  } else if spec.semantic_variant == "scheme-substring" {
+    // 复审 R2：scheme 含 marc:relators 子串但并非该词汇表，角色必须回退 aut。
+    lines.push("    <dc:title>" + spec.title + "</dc:title>")
+    lines.push(
+      "    <dc:creator id=\"creator-main\">" + spec.creator + "</dc:creator>",
+    )
+    lines.push(
+      "    <meta refines=\"#creator-main\" property=\"role\" scheme=\"http://evil.example/marc:relators\">xyz</meta>",
+    )
   } else {
     lines.push("    <dc:title>" + spec.title + "</dc:title>")
     lines.push("    <dc:creator>" + spec.creator + "</dc:creator>")
@@ -246,7 +255,8 @@ fn opf_xml(spec : FixtureSpec) -> String {
 
 ///|
 fn nav_xhtml(spec : FixtureSpec) -> String {
-  if spec.semantic_variant == "nav-multivalue" {
+  if spec.semantic_variant == "nav-multivalue" ||
+    spec.semantic_variant == "nav-prefix" {
     let item_lines : Array[String] = []
     for kv in spec.chapters {
       item_lines.push(
@@ -254,10 +264,26 @@ fn nav_xhtml(spec : FixtureSpec) -> String {
       )
     }
     let items = @util.join_nl(item_lines)
+    let prefix = if spec.semantic_variant == "nav-prefix" {
+      "o"
+    } else {
+      "epub"
+    }
+    let ns_decl = if prefix == "o" {
+      " xmlns:o=\"http://www.idpf.org/2007/ops\""
+    } else {
+      " xmlns:epub=\"http://www.idpf.org/2007/ops\""
+    }
     return @util.join_nl([
-      "<?xml version=\"1.0\" encoding=\"utf-8\"?>", "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:epub=\"http://www.idpf.org/2007/ops\">",
-      "<head><title>目录</title></head><body>", "<nav epub:type=\"landmarks\"><ol><li><a href=\"ch1.xhtml\">地标项</a></li></ol></nav>",
-      "<nav epub:type=\"toc landmarks\"><h1>目录</h1><ol>", items, "</ol></nav>",
+      "<?xml version=\"1.0\" encoding=\"utf-8\"?>",
+      "<html xmlns=\"http://www.w3.org/1999/xhtml\"" + ns_decl + ">",
+      "<head><title>目录</title></head><body>",
+      "<nav " +
+      prefix +
+      ":type=\"landmarks\"><ol><li><a href=\"ch1.xhtml\">地标项</a></li></ol></nav>",
+      "<nav " + prefix + ":type=\"toc landmarks\"><h1>目录</h1><ol>",
+      items,
+      "</ol></nav>",
       "</body></html>",
     ])
   }
@@ -478,7 +504,8 @@ pub fn all_fixtures() -> Array[(String, FixtureSpec)] {
   // 语义对账：每条只验证一个规范条款，避免另一条路径掩盖缺陷。
   for
     variant in [
-      "fallback", "svg", "nav-multivalue", "cover-legacy", "package-lang", "multivalue-dc",
+      "fallback", "svg", "nav-multivalue", "nav-prefix", "cover-legacy", "package-lang",
+      "multivalue-dc", "scheme-substring",
     ] {
     let s = simple_spec()
     s.semantic_variant = variant

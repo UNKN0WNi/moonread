@@ -246,6 +246,18 @@
       }
     },
     {
+      "file": "epub/semantic-nav-prefix.epub",
+      "name": "semantic-nav-prefix",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "MoonRead 样例",
+        "chapters": 2,
+        "toc_items": 2,
+        "resources": 4
+      }
+    },
+    {
       "file": "epub/semantic-cover-legacy.epub",
       "name": "semantic-cover-legacy",
       "license": "Apache-2.0",
@@ -285,6 +297,19 @@
           "P1",
           "P2"
         ]
+      }
+    },
+    {
+      "file": "epub/semantic-scheme-substring.epub",
+      "name": "semantic-scheme-substring",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "MoonRead 样例",
+        "chapters": 2,
+        "toc_items": 2,
+        "resources": 4,
+        "creator_role": "aut"
       }
     }
   ]

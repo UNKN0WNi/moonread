@@ -662,6 +662,24 @@ pub fn invariant_within_page_height(
 }
 
 ///|
+/// 超高不可拆块检测：标题有意设为不可拆，但极端长标题可能高于一页。
+/// 分页器按「单块独占页」例外放行，这里把 id 返回给上层单独告警，
+/// 既不破坏不丢内容优先级，又不让超界悄悄通过。
+pub fn oversized_unbreakable_blocks(
+  blocks : Array[Block],
+  policy : PagePolicy,
+) -> Array[String] {
+  let limit = content_height(policy)
+  let out : Array[String] = []
+  for b in blocks {
+    if !b.splittable && b.height > limit + 0.000001 {
+      out.push(b.id)
+    }
+  }
+  out
+}
+
+///|
 /// 不变式 3：片段序号严格单调递增。
 pub fn invariant_monotonic(result : Paginated) -> Bool {
   let mut last = -1

@@ -519,3 +519,20 @@ test "大量块的组合仍然全绿" {
     msg="应产生多页：" + @paginate.page_count(r).to_string(),
   )
 }
+
+///|
+/// 复审 R3：不可拆标题高于整页时仍独占一页，但必须被单独检出并告警。
+test "超高不可拆块被检出，普通标题不误报" {
+  let p = @paginate.default_policy()
+  let limit = @paginate.content_height(p)
+  let huge = @paginate.heading_block("huge", limit + 100.0)
+  let small = @paginate.heading_block("small", limit / 2.0)
+  let flagged = @paginate.oversized_unbreakable_blocks([huge, small], p)
+  assert_true(flagged.length() == 1, msg="只报超高块")
+  assert_true(flagged[0] == "huge", msg="id：" + flagged[0])
+  let r = @paginate.paginate([huge, small], p)
+  assert_true(
+    @paginate.invariant_within_page_height(p, r),
+    msg="独占页例外仍成立",
+  )
+}

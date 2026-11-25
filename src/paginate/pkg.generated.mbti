@@ -46,6 +46,8 @@ pub fn list_block(String, String, Int32, Double, Bool, Int32, Int32) -> Block
 
 pub fn mm_to_px(Double) -> Double
 
+pub fn oversized_unbreakable_blocks(Array[Block], PagePolicy) -> Array[String]
+
 pub fn page_count(Paginated) -> Int32
 
 pub fn page_footers(PagePolicy, Paginated, String) -> Array[String]
