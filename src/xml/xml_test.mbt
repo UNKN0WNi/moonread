@@ -630,6 +630,42 @@ test "属性值内引用含标记的内部实体仍被拒绝" {
 }
 
 ///|
+/// DOCTYPE 内部子集扫描必须按 XML 词法识别引号：实体值里的 `]` / `>`
+/// 不是子集/前言的终点，否则后续声明会被静默丢弃。
+test "DOCTYPE 实体值内的 ] 与 > 不提前结束内部子集" {
+  let xml = @util.join_nl([
+    "<!DOCTYPE doc [<!ENTITY a \"含]符号\"><!ENTITY b \"a > b\">]>", "<doc>&a;|&b;</doc>",
+  ])
+  match @xml.parse_document(xml) {
+    Err(e) => assert_true(false, msg="应接受合法内部实体：" + e)
+    Ok(root) =>
+      assert_true(
+        @xml.text_content(root) == "含]符号|a > b",
+        msg="全部内部实体按语义展开：" + @xml.text_content(root),
+      )
+  }
+}
+
+///|
+/// 注释是词法单位：其中的 `<!ENTITY … SYSTEM …>` 只是示例文字，
+/// 不得被误判为外部实体声明而拒绝合法文档。
+test "DOCTYPE 注释中的外部实体样例不触发禁令" {
+  let xml = @util.join_nl([
+    "<!DOCTYPE doc [", "  <!-- 示例：<!ENTITY xxe SYSTEM \"file:///etc/passwd\"> 仅作说明 -->",
+    "  <!ENTITY ok \"yes\">", "]>", "<doc>&ok;</doc>",
+  ])
+  match @xml.parse_document(xml) {
+    Err(e) =>
+      assert_true(false, msg="注释不应触发外部实体禁令：" + e)
+    Ok(root) =>
+      assert_true(
+        @xml.text_content(root) == "yes",
+        msg="注释后的合法实体仍被解析：" + @xml.text_content(root),
+      )
+  }
+}
+
+///|
 /// XML WFC: No Duplicate Attributes 与 §2.2 Char production。
 test "重复属性与 &#x0; 被拒绝" {
   assert_true(
@@ -693,6 +729,41 @@ test "命名空间：外来同名入口不命中标准词汇" {
       assert_true(
         @xml.namespace_uri(kids[1]) == "urn:foreign",
         msg="前缀按作用域解析：" + @xml.namespace_uri(kids[1]),
+      )
+    }
+  }
+}
+
+///|
+/// XML 前缀区分大小写：`xmlns:X` 绑定的是 `X`，不是 `x`。
+/// 旧实现把绑定键小写化，却按原样查 `<X:title>` 的前缀，导致 URI 为空、
+/// 被当成历史语料命中 dc:title——正是外来命名空间守卫要防住的绕过。
+test "命名空间：大小写前缀按原样绑定，不能绕过外来识别" {
+  let xml = @util.join_nl([
+    "<metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\"", " xmlns:X=\"urn:foreign\">",
+    "  <dc:title>合法</dc:title>", "  <X:title>外来</X:title>", "  <x:title>无绑定</x:title>",
+    "</metadata>",
+  ])
+  match @xml.parse_document(xml) {
+    Err(_) => panic()
+    Ok(root) => {
+      let kids = @xml.child_elements(root)
+      assert_true(kids.length() == 3, msg="三个同名子元素")
+      assert_true(
+        @xml.element_is(kids[0], "title", @xml.DC_NS),
+        msg="dc:title 命中 DC 命名空间",
+      )
+      assert_true(
+        @xml.namespace_uri(kids[1]) == "urn:foreign",
+        msg="X 前缀按原样绑定：" + @xml.namespace_uri(kids[1]),
+      )
+      assert_true(
+        !@xml.element_is(kids[1], "title", @xml.DC_NS),
+        msg="X:title(urn:foreign) 不冒充 dc:title",
+      )
+      assert_true(
+        @xml.namespace_uri(kids[2]) == "",
+        msg="未声明的 x 前缀不应借用 X 的绑定",
       )
     }
   }

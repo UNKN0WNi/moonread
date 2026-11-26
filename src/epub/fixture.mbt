@@ -96,9 +96,21 @@ fn opf_xml(spec : FixtureSpec) -> String {
     lines.push("  <!ENTITY book.lang \"" + spec.language + "\">")
     lines.push("]>")
   }
+  if spec.semantic_variant == "param-entity" {
+    // 案例 E：合法内部参数实体只在实体值内展开，构造后续实体声明。
+    lines.push("<!DOCTYPE package [")
+    lines.push("  <!ENTITY % book.name \"月亮与六便士\">")
+    lines.push("  <!ENTITY book.title \"内部实体书名：%book.name;\">")
+    lines.push("]>")
+  }
   let ver = if spec.epub3 { "3.0" } else { "2.0" }
   let lang_attr = if spec.semantic_variant == "package-lang" {
     " xml:lang=\"zh-Hant\""
+  } else {
+    ""
+  }
+  let ns_attr = if spec.semantic_variant == "namespace-foreign" {
+    " xmlns:X=\"urn:foreign\""
   } else {
     ""
   }
@@ -107,17 +119,25 @@ fn opf_xml(spec : FixtureSpec) -> String {
     ver +
     "\"" +
     lang_attr +
+    ns_attr +
     " unique-identifier=\"uid\">",
   )
   lines.push("  <metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">")
   lines.push(
     "    <dc:identifier id=\"uid\">urn:uuid:moonread-sample</dc:identifier>",
   )
+  if spec.semantic_variant == "namespace-foreign" {
+    // 案例 D：外来大写前缀的同名 title 排在合法 dc:title 之前。
+    lines.push("    <X:title>外来污染</X:title>")
+  }
   if spec.internal_entities {
     // 合法 EPUB 3.3：标题文本与属性都引用内部实体。
     lines.push(
       "    <dc:title id=\"title-main\" xml:lang=\"&book.lang;\">&book.title;</dc:title>",
     )
+  } else if spec.semantic_variant == "param-entity" {
+    lines.push("    <dc:title>&book.title;</dc:title>")
+    lines.push("    <dc:creator>" + spec.creator + "</dc:creator>")
   } else if spec.rich_metadata {
     // 合法 EPUB 3.3：首个 dc:title 是主标题；另有带 xml:lang 的别名标题。
     lines.push(
@@ -174,6 +194,11 @@ fn opf_xml(spec : FixtureSpec) -> String {
     )
   }
   if spec.epub3 {
+    if spec.semantic_variant == "namespace-foreign" {
+      lines.push(
+        "    <X:meta property=\"dcterms:modified\">外来修改时间</X:meta>",
+      )
+    }
     lines.push(
       "    <meta property=\"dcterms:modified\">2026-11-19T00:00:00Z</meta>",
     )
@@ -226,6 +251,11 @@ fn opf_xml(spec : FixtureSpec) -> String {
       "    <item id=\"svg\" href=\"page.svg\" media-type=\"image/svg+xml\"/>",
     )
   }
+  if spec.semantic_variant == "namespace-foreign" {
+    lines.push(
+      "    <X:item id=\"evil\" href=\"evil.xhtml\" media-type=\"application/xhtml+xml\"/>",
+    )
+  }
   if spec.with_ncx {
     lines.push(
       "    <item id=\"ncx\" href=\"toc.ncx\" media-type=\"application/x-dtbncx+xml\"/>",
@@ -244,6 +274,9 @@ fn opf_xml(spec : FixtureSpec) -> String {
   }
   if spec.semantic_variant == "svg" {
     lines.push("    <itemref idref=\"svg\"/>")
+  }
+  if spec.semantic_variant == "namespace-foreign" {
+    lines.push("    <itemref idref=\"evil\"/>")
   }
   if spec.broken_idref {
     lines.push("    <itemref idref=\"ghost\"/>")
@@ -505,10 +538,13 @@ pub fn all_fixtures() -> Array[(String, FixtureSpec)] {
   for
     variant in [
       "fallback", "svg", "nav-multivalue", "nav-prefix", "cover-legacy", "package-lang",
-      "multivalue-dc", "scheme-substring",
+      "multivalue-dc", "scheme-substring", "namespace-foreign", "param-entity",
     ] {
     let s = simple_spec()
     s.semantic_variant = variant
+    if variant == "param-entity" {
+      s.title = "内部实体书名：月亮与六便士"
+    }
     out.push(("semantic-" + variant, s))
   }
   out

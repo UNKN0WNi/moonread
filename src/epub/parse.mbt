@@ -146,15 +146,21 @@ pub fn parse_opf(
   match @xml.parse_document_with(text, opts) {
     Err(e) => Err("OPF 解析失败：" + e)
     Ok(root) => {
-      if !@xml.tag_is(root, "package") {
-        return Err("OPF 根元素应为 package，实际是 '" + root.tag + "'")
+      // §1.1：根元素身份是 {URI}local name。`x:package` 绑定到外来 URI
+      // 时不能冒充 OPF 根元素；未声明命名空间的旧语料仍按 local name 兼容。
+      if !@xml.tag_is(root, "package") || foreign_ns(root, @xml.OPF_NS) {
+        return Err(
+          "OPF 根元素应为 package（OPF 命名空间），实际是 '" +
+          root.tag +
+          "'",
+        )
       }
       let warnings : Array[String] = []
       let unique_id = lower_attr_to_raw(
         @xml.get_attr(root, "unique-identifier"),
       )
       let package_version = lower_attr_to_raw(@xml.get_attr(root, "version"))
-      let metadata_el = match @xml.find_child(root, "metadata") {
+      let metadata_el = match find_opf_child(root, "metadata", warnings) {
         None => {
           warnings.push(
             "OPF 缺少 metadata 元素，元数据全部按空处理",
@@ -163,14 +169,14 @@ pub fn parse_opf(
         }
         Some(m) => m
       }
-      let manifest_el = match @xml.find_child(root, "manifest") {
+      let manifest_el = match find_opf_child(root, "manifest", warnings) {
         None => {
           warnings.push("OPF 缺少 manifest 元素")
           @xml.Element::{ tag: "manifest", attrs: [], children: [], ns: [], }
         }
         Some(m) => m
       }
-      let spine_el = match @xml.find_child(root, "spine") {
+      let spine_el = match find_opf_child(root, "spine", warnings) {
         None => {
           warnings.push("OPF 缺少 spine 元素，章节顺序为空")
           @xml.Element::{ tag: "spine", attrs: [], children: [], ns: [], }
@@ -249,7 +255,9 @@ fn dc_vocabulary(name : String) -> Bool {
   name == "type" ||
   name == "coverage" ||
   name == "relation" ||
-  name == "format"
+  name == "format" ||
+  name == "rights" ||
+  name == "subject"
 }
 
 ///|
@@ -258,6 +266,32 @@ fn dc_vocabulary(name : String) -> Bool {
 fn foreign_ns(el : @xml.Element, want_uri : String) -> Bool {
   let uri = @xml.namespace_uri(el)
   uri.length() > 0 && uri != want_uri
+}
+
+///|
+/// OPF 标准词汇入口：按 local name 找直接子元素，但绑定到外来命名空间的
+/// 同名入口必须忽略——§1.1 的标准词汇按 URI 识别，不只是 dc 词汇。
+/// 未声明命名空间（URI 为空）的历史语料仍按 local name 兼容。
+fn find_opf_child(
+  el : @xml.Element,
+  tag : String,
+  warnings : Array[String],
+) -> @xml.Element? {
+  let want = @util.ascii_lower(tag)
+  for c in @xml.child_elements(el) {
+    if @util.ascii_lower(@xml.local_name(c.tag)) != want {
+      continue
+    }
+    if foreign_ns(c, @xml.OPF_NS) {
+      push_warning(
+        warnings,
+        "忽略外来命名空间的 OPF 同名入口 '" + c.tag + "'",
+      )
+      continue
+    }
+    return Some(c)
+  }
+  None
 }
 
 ///|
@@ -310,6 +344,15 @@ fn parse_metadata(
     if dc_vocabulary(name) && foreign_ns(c, @xml.DC_NS) {
       warnings.push(
         "忽略外来命名空间的 dc 同名入口 '" + c.tag + "'",
+      )
+      continue
+    }
+    // meta 属 OPF 词汇：外来 `<x:meta property="dcterms:modified">`
+    // 不得写入修改时间（refines 的第一轮循环已有同款守卫，这里覆盖
+    // 无 refines 的 meta 分支）。
+    if name == "meta" && foreign_ns(c, @xml.OPF_NS) {
+      warnings.push(
+        "忽略外来命名空间的 meta 同名入口 '" + c.tag + "'",
       )
       continue
     }
@@ -574,6 +617,13 @@ fn parse_manifest(
     if !@xml.tag_is(c, "item") {
       continue
     }
+    if foreign_ns(c, @xml.OPF_NS) {
+      push_warning(
+        warnings,
+        "忽略外来命名空间的 manifest item '" + c.tag + "'",
+      )
+      continue
+    }
     let id = lower_attr_to_raw(@xml.attr_ci(c, "id"))
     let href = lower_attr_to_raw(@xml.attr_ci(c, "href"))
     let mt = @util.ascii_lower(@xml.attr_or_empty(c, "media-type"))
@@ -648,6 +698,13 @@ fn parse_spine(
   let out : Array[SpineItem] = []
   for c in @xml.child_elements(el) {
     if !@xml.tag_is(c, "itemref") {
+      continue
+    }
+    if foreign_ns(c, @xml.OPF_NS) {
+      push_warning(
+        warnings,
+        "忽略外来命名空间的 spine itemref '" + c.tag + "'",
+      )
       continue
     }
     let idref = lower_attr_to_raw(@xml.attr_ci(c, "idref"))
@@ -785,11 +842,18 @@ pub fn parse_guide(
   warnings : Array[String],
 ) -> Array[GuideRef] {
   let out : Array[GuideRef] = []
-  match @xml.find_child(root, "guide") {
+  match find_opf_child(root, "guide", warnings) {
     None => ()
     Some(g) =>
       for c in @xml.child_elements(g) {
         if !@xml.tag_is(c, "reference") {
+          continue
+        }
+        if foreign_ns(c, @xml.OPF_NS) {
+          push_warning(
+            warnings,
+            "忽略外来命名空间的 guide reference '" + c.tag + "'",
+          )
           continue
         }
         let typ = lower_attr_to_raw(@xml.attr_ci(c, "type"))
@@ -827,18 +891,36 @@ fn with_ops_prefixes(
   el : @xml.Element,
   active : Array[String],
 ) -> Array[String] {
-  let out : Array[String] = []
+  let mut out : Array[String] = []
   for p in active {
     out.push(p)
   }
   for kv in el.attrs {
     let name = @util.ascii_lower(kv.0)
     if @util.starts_with(name, "xmlns:") {
-      let prefix = @util.slice_string(name, 6, @util.to_chars(name).length())
-      if @util.trim(@util.ascii_lower(kv.1)) == OPS_NS &&
-        !array_has(out, prefix) {
-        out.push(prefix)
+      // 与 XML 层一致：前缀按原样保存。若把 `xmlns:X` 小写化成 `x`，
+      // 外来 `X:type` 会误命中绑定到 OPS 的 `x:type`。
+      let prefix = @util.slice_string(kv.0, 6, @util.to_chars(kv.0).length())
+      if @util.trim(@util.ascii_lower(kv.1)) == OPS_NS {
+        if !array_has(out, prefix) {
+          out.push(prefix)
+        }
+      } else {
+        // 显式把默认容错前缀 `epub` 绑到外来 URI 时，撤销容错，
+        // 不能让 `epub:type` 继续冒充 OPS 语义。
+        out = without_prefix(out, prefix)
       }
+    }
+  }
+  out
+}
+
+///|
+fn without_prefix(xs : Array[String], want : String) -> Array[String] {
+  let out : Array[String] = []
+  for p in xs {
+    if p != want {
+      out.push(p)
     }
   }
   out
@@ -880,19 +962,22 @@ fn has_epub_type(
   prefixes : Array[String],
 ) -> Bool {
   for kv in el.attrs {
-    let name = @util.ascii_lower(kv.0)
-    for p in prefixes {
-      if name == p + ":type" {
-        let normalized = @util.replace_all(
-          @util.replace_all(@util.replace_all(kv.1, "\t", " "), "\n", " "),
-          "\r",
-          " ",
-        )
-        for token in @util.split_char(normalized, ' ') {
-          if @util.ascii_lower(token) == want {
-            return true
-          }
-        }
+    // 前缀区分大小写，local name 沿用宽松的大小写无关比较。
+    let p = @xml.prefix_of(kv.0)
+    if p.length() == 0 || !array_has(prefixes, p) {
+      continue
+    }
+    if @util.ascii_lower(@xml.local_name(kv.0)) != "type" {
+      continue
+    }
+    let normalized = @util.replace_all(
+      @util.replace_all(@util.replace_all(kv.1, "\t", " "), "\n", " "),
+      "\r",
+      " ",
+    )
+    for token in @util.split_char(normalized, ' ') {
+      if @util.ascii_lower(token) == want {
+        return true
       }
     }
   }

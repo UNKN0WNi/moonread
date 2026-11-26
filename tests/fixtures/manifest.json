@@ -311,6 +311,30 @@
         "resources": 4,
         "creator_role": "aut"
       }
+    },
+    {
+      "file": "epub/semantic-namespace-foreign.epub",
+      "name": "semantic-namespace-foreign",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "MoonRead 样例",
+        "chapters": 2,
+        "toc_items": 2,
+        "resources": 4
+      }
+    },
+    {
+      "file": "epub/semantic-param-entity.epub",
+      "name": "semantic-param-entity",
+      "license": "Apache-2.0",
+      "source": "self-generated",
+      "expect": {
+        "title": "内部实体书名：月亮与六便士",
+        "chapters": 2,
+        "toc_items": 2,
+        "resources": 4
+      }
     }
   ]
 }

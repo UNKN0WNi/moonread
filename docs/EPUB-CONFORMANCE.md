@@ -23,7 +23,7 @@
 
 这里有三个必须同时满足的事实，构成本项目**符合标准的 XML/容器处理终点**：
 
-1. **命名空间是元素身份的一部分**：EPUB 3.3 规范性引用 XML Namespaces 1.0，元素身份 = `{命名空间 URI}local name`，不是裸 local name。标准词汇（`dc:title`、`opf:item`、`epub:type`）必须按前缀绑定的 URI 识别，外来命名空间的同名入口不得冒充。
+1. **命名空间是元素身份的一部分**：EPUB 3.3 规范性引用 XML Namespaces 1.0，元素身份 = `{命名空间 URI}local name`，不是裸 local name。标准词汇（`dc:title`、`opf:item`/`itemref`、OPF 容器元素与 `meta`、`epub:type`）必须按前缀绑定的 URI 识别，外来命名空间的同名入口不得冒充。XML 前缀区分大小写：`xmlns:X` 绑定的是 `X`，绑定键与元素/属性前缀都按原样比较，不得小写化绕过守卫。
 2. **禁令只针对外部实体声明**：条款「MUST NOT」的宾语是 *external entity declarations in the internal DTD subset*，不覆盖内部一般实体，也不覆盖合法内部参数实体。
 3. **外部标识符可出现但不加载**：DOCTYPE 可引用允许的外部标识符或不带标识符，内核不解析外部 DTD。
 
@@ -33,10 +33,10 @@
 |---|---|---|
 | 五个预定义实体（`lt/gt/amp/quot/apos`）+ 数字引用（十进制/十六进制） | ✅ 全部展开 | XML 1.0 预定义 |
 | **DOCTYPE 内部子集声明的内部实体** `<!ENTITY name "value">` | ✅ 文本中替换值按标记重新解析（可产生元素），属性值按字符串展开；值可再含实体引用（递归，深度上限 8） | 规范未禁止，属合法 EPUB 输入；XML 1.0 §4.4.5 |
-| **合法内部参数实体** `<!ENTITY % name "value">` | ✅ 接受声明；值在内部子集内按 `%name;` 展开，用于构造后续实体声明；不进入正文实体表 | EPUB 3.3 未禁止内部参数实体声明；XML 1.0 §4.4.8 |
+| **合法内部参数实体** `<!ENTITY % name "value">` | ✅ 接受声明；**仅在实体值内**按 `%name;` 展开（用已声明的参数实体构造后续实体值）；单独一条声明 `%d;` 形式的参数实体引用**不展开**、不产生声明；不进入正文实体表 | EPUB 3.3 未禁止内部参数实体声明；XML 1.0 §4.4.8 |
 | `DOCTYPE` 外部标识符（`PUBLIC`/`SYSTEM` 的 DTD 引用） | ✅ 允许出现在前言；不加载外部 DTD | 规范条款明确 MAY |
 | **外部实体声明**（一般或参数）`<!ENTITY x SYSTEM "…">` / `PUBLIC "…" "…"`、`<!ENTITY % x SYSTEM "…">` | ❌ 拒绝并给清晰错误 | 规范 MUST NOT（XXE 防线） |
-| **命名空间识别** | ✅ 按 `{URI}local name`：前缀从作用域 `xmlns` 绑定解析；URI 为空的历史语料按 local name 兼容；URI 非空且不匹配标准词汇时判为外来入口并忽略 | XML Namespaces 1.0 + EPUB 3.3 §1.6 / §3.9 |
+| **命名空间识别** | ✅ 按 `{URI}local name`：前缀从作用域 `xmlns` 绑定解析（前缀大小写原样保留）；DC 词汇、OPF 容器/`item`/`itemref`/`meta`/`guide` 与 `epub:type` 都按 URI 守卫；URI 为空的历史语料按 local name 兼容；URI 非空且不匹配标准词汇时判为外来入口并忽略且告警 | XML Namespaces 1.0 + EPUB 3.3 §1.6 / §3.9 |
 
 `lenient` 模式覆盖真实书的常见脏写法（未闭合的 HTML 空元素、大小写不一致的结束标签、**未声明实体按字面保留**）——但**不放宽**外部实体禁令，安全约束在两种模式下一致。
 
@@ -237,7 +237,9 @@
 | `metadata.titles.length()` | `1` | `x:title` 不是 DC 词汇，不计入 |
 | `warnings` | 含一条「忽略外来命名空间的 dc 同名入口」 | 明确告知外来入口被忽略，不静默 |
 
-未声明命名空间的旧语料 `<metadata><title>兼容</title></metadata>` 仍按 local name 命中（`namespace_uri` 为空即兼容），不破坏既有书库。断言：`外来命名空间同名 title 不污染 dc 元数据`、`命名空间：外来同名入口不命中标准词汇`、`命名空间：前缀绑定沿作用域继承`、`命名空间：未声明前缀保持 local name 兼容`。
+大小写变体同样成立：`<X:title xmlns:X="urn:foreign">` 中的 `X` 是独立前缀，绑定键按原样存储、按原样查找；不得把 `xmlns:X` 小写化成 `x` 后让 `<X:title>` 解析出空 URI、再当作历史语料命中 `dc:title`。此守卫同样覆盖非 DC 标准词汇：外来 `<X:meta property="dcterms:modified">` 不写 `modified`，外来 `<X:item>` / `<X:itemref>` 不进 manifest/spine，外来 `<X:metadata>` / `<X:manifest>` / `<X:spine>` 不冒充 OPF 容器，外来 `X:type="toc"` 不冒充 OPS 导航语义；每类忽略均给告警。
+
+未声明命名空间的旧语料 `<metadata><title>兼容</title></metadata>` 仍按 local name 命中（`namespace_uri` 为空即兼容），不破坏既有书库。断言：`外来命名空间同名 title 不污染 dc 元数据`、`命名空间：大小写前缀按原样绑定，不能绕过外来识别`、`OPF 标准词汇守卫覆盖 meta/manifest/spine/rights/subject`、`OPF 容器元素外来命名空间被忽略`、`nav 前缀按大小写原样匹配，外来大写前缀不冒充 OPS`。夹具：`semantic-namespace-foreign.epub`。
 
 **案例 E：合法内部参数实体声明（合法输入 → 预期解析结果）**
 
@@ -255,11 +257,13 @@
 
 | 字段 | 期望值 | 说明 |
 |---|---|---|
-| `%book.name;` | 在内部子集展开为 `月亮与六便士` | 参数实体只在 DTD 内部子集生效，不进入正文实体表 |
+| `%book.name;` | 在实体值内展开为 `月亮与六便士` | 参数实体只在 DTD **实体值内**生效，不进入正文实体表；声明层出现 `%d;` 单独代表一条声明时不展开（见 §1.1 表） |
 | `metadata.title` | `内部实体书名：月亮与六便士` | 一般实体 `book.title` 的值中 `%book.name;` 先展开，正文 `&book.title;` 得到完整标题 |
 | 非法 `<!ENTITY % ext SYSTEM "…">` | `Err("…禁止外部实体声明（参数实体）…")` | 外部标识符才是 EPUB 禁令对象，strict/lenient 一致 |
 
-实现位置：`src/xml/xml.mbt` 的 `XP.param_entities` / `parse_internal_subset` / `expand_param_value`；命名空间在 `merge_ns_scope` / `Element.ns` / `element_is` / `namespace_uri`，EPUB 层守卫在 `src/epub/parse.mbt` 的 `foreign_ns` / `dc_vocabulary`。
+内部子集扫描按 XML 词法跳过引号、注释与 PI：实体值中的 `]` / `>` 不提前结束子集，注释中出现的 `<!ENTITY … SYSTEM …>` 不触发禁令。断言：`DOCTYPE 实体值内的 ] 与 > 不提前结束内部子集`、`DOCTYPE 注释中的外部实体样例不触发禁令`。夹具：`semantic-param-entity.epub`。
+
+实现位置：`src/xml/xml.mbt` 的 `XP.param_entities` / `skip_doctype` / `parse_internal_subset` / `expand_param_value` / `merge_ns_scope` / `Element.ns` / `element_is` / `namespace_uri`；EPUB 层守卫在 `src/epub/parse.mbt` 的 `foreign_ns` / `find_opf_child` / `dc_vocabulary` / `with_ops_prefixes`。
 
 ## 3. 可复现的验证命令
 
@@ -271,9 +275,9 @@ bash scripts/ci.sh
 python3 tools/corpus_check.py --require-manifest --require-probe
 ```
 
-当前结果：四端各 157 项测试通过；跨端输出一致；27 本 EPUB（25 自建 + 2 第三方公版）内核对账全部通过；`moon prove` 在 CI 的 Linux 任务中由 SMT 求解器验证。
+当前结果：四端各 166 项测试通过；跨端输出一致；29 本 EPUB（27 自建 + 2 第三方公版）内核对账全部通过；`moon prove` 在 CI 的 Linux 任务中由 SMT 求解器验证。
 
 ## 4. 语料来源
 
-- 25 本自建最小 EPUB：由 `tools/gen_fixtures.py` 与 `src/epub/fixture.mbt` 成对生成，Apache-2.0，见 `tests/fixtures/manifest.json`。其中 `rich-metadata.epub` 承载本文 §2.2–2.4 的合法语义样例，`internal-entities.epub` 承载 §2.6 的内部实体标题与命名空间案例，`semantic-*` 承载 §2.7–2.8 的逐条款回归。
+- 27 本自建最小 EPUB：由 `tools/gen_fixtures.py` 与 `src/epub/fixture.mbt` 成对生成，Apache-2.0，见 `tests/fixtures/manifest.json`。其中 `rich-metadata.epub` 承载本文 §2.2–2.4 的合法语义样例，`internal-entities.epub` 承载 §2.6 的内部实体标题与命名空间案例，`semantic-*` 承载 §2.7–2.8 的逐条款回归；`semantic-namespace-foreign.epub` 与 `semantic-param-entity.epub` 分别承载 §2.9 的案例 D / E。
 - 2 本第三方公版 EPUB：来源 URL 与 SHA-256 钉在 `tests/corpus/manifest.json`，避免上游静默变更。

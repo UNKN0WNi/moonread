@@ -229,14 +229,68 @@ fn skip_until(p : XP, term : String) -> Result[Unit, String] {
 ///|
 /// `<!DOCTYPE ...>`：处理内部子集 `[ ... ]`（其中可能出现 `>`），
 /// 收集合法内部实体声明；外部实体声明按 EPUB 3.3 规范拒绝。
+///
+/// 扫描按 XML 词法跳过引号、注释与 PI：实体值中的 `]` 不能提前结束内部
+/// 子集，注释中的 `<!ENTITY … SYSTEM …>` 也不是声明。真正的声明收集
+/// 由 `parse_internal_subset` 完成（那里同样跳过注释与引号）。
 fn skip_doctype(p : XP) -> Result[Unit, String] {
   let n = p.src.length()
   let mut i = p.pos + 2
   let mut in_subset = false
   let mut subset_start = 0
   let mut subset_end = -1
+  let mut quote : Char? = None
+  let mut in_comment = false
+  let mut in_pi = false
+  let comment_start = @util.to_chars("<!--")
+  let comment_end = @util.to_chars("-->")
+  let pi_start = @util.to_chars("<?")
+  let pi_end = @util.to_chars("?>")
   while i < n {
+    if in_comment {
+      if @util.matches_at(p.src, i, comment_end) {
+        in_comment = false
+        i = i + 3
+      } else {
+        i = i + 1
+      }
+      continue
+    }
+    if in_pi {
+      if @util.matches_at(p.src, i, pi_end) {
+        in_pi = false
+        i = i + 2
+      } else {
+        i = i + 1
+      }
+      continue
+    }
+    match quote {
+      Some(q) => {
+        if p.src[i] == q {
+          quote = None
+        }
+        i = i + 1
+        continue
+      }
+      None => ()
+    }
+    if @util.matches_at(p.src, i, comment_start) {
+      in_comment = true
+      i = i + 4
+      continue
+    }
+    if @util.matches_at(p.src, i, pi_start) {
+      in_pi = true
+      i = i + 2
+      continue
+    }
     let c = p.src[i]
+    if c == '"' || c == '\'' {
+      quote = Some(c)
+      i = i + 1
+      continue
+    }
     if c == '[' && !in_subset {
       in_subset = true
       subset_start = i + 1
@@ -275,8 +329,32 @@ fn parse_internal_subset(
   to : Int32,
 ) -> Result[Unit, String] {
   let marker = @util.to_chars("<!ENTITY")
+  let comment_start = @util.to_chars("<!--")
+  let comment_end = @util.to_chars("-->")
   let mut i = from
   while i < to {
+    // 注释是词法单位：其中的 `<!ENTITY … SYSTEM …>` 只是文字，不是声明。
+    if @util.matches_at(p.src, i, comment_start) {
+      i = i + comment_start.length()
+      while i + comment_end.length() <= to &&
+            !@util.matches_at(p.src, i, comment_end) {
+        i = i + 1
+      }
+      i = i + comment_end.length()
+      continue
+    }
+    // 引号内文本同理（例如 NOTATION 声明的引号参数）。
+    if p.src[i] == '"' || p.src[i] == '\'' {
+      let q = p.src[i]
+      i = i + 1
+      while i < to && p.src[i] != q {
+        i = i + 1
+      }
+      if i < to {
+        i = i + 1
+      }
+      continue
+    }
     if @util.matches_at(p.src, i, marker) {
       let decl_start = i
       i = i + marker.length()
@@ -620,7 +698,12 @@ fn merge_ns_scope(
     if key == "xmlns" {
       set_ns(out, "", kv.1)
     } else if @util.starts_with(key, "xmlns:") {
-      let prefix = @util.slice_string(key, 6, @util.to_chars(key).length())
+      // XML 前缀区分大小写：`xmlns:X="urn:foreign"` 绑定的是前缀 `X`，
+      // 不是 `x`。若把前缀小写化，`<X:title>` 就解析不出 URI，进而被
+      // 当成「未声明命名空间的历史语料」冒充 `dc:title`。
+      // 标记 `xmlns:` 仍按大小写无关识别（兼容真实书的脏写法），
+      // 但绑定键必须取自原始属性名。
+      let prefix = @util.slice_string(kv.0, 6, @util.to_chars(kv.0).length())
       set_ns(out, prefix, kv.1)
     }
   }

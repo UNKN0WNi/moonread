@@ -779,6 +779,128 @@ test "外来命名空间同名 title 不污染 dc 元数据" {
 }
 
 ///|
+/// §1.1 守卫覆盖面：标准词汇按 URI 识别，不只是 dc 词汇。
+/// 大写外来前缀 X 绑定 urn:foreign 时，meta/manifest item/spine itemref
+/// 以及 dc:rights / dc:subject 的同名入口都不得污染合法语义。
+test "OPF 标准词汇守卫覆盖 meta/manifest/spine/rights/subject" {
+  let opf = @util.join_nl([
+    "<?xml version=\"1.0\"?>", "<package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\" unique-identifier=\"uid\" xmlns:X=\"urn:foreign\">",
+    "  <metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">", "    <dc:identifier id=\"uid\">urn:uuid:moonread-test</dc:identifier>",
+    "    <dc:title>真标题</dc:title>", "    <dc:language>zh</dc:language>", "    <dc:rights>合法权利</dc:rights>",
+    "    <dc:subject>合法主题</dc:subject>", "    <X:rights>外来权利</X:rights>",
+    "    <X:subject>外来主题</X:subject>", "    <X:meta property=\"dcterms:modified\">外来修改时间</X:meta>",
+    "  </metadata>", "  <manifest>", "    <item id=\"ch1\" href=\"ch1.xhtml\" media-type=\"application/xhtml+xml\"/>",
+    "    <X:item id=\"evil\" href=\"evil.xhtml\" media-type=\"application/xhtml+xml\"/>",
+    "  </manifest>", "  <spine>", "    <itemref idref=\"ch1\"/>", "    <X:itemref idref=\"evil\"/>",
+    "  </spine>", "</package>",
+  ])
+  match @epub.parse_opf("OEBPS/content.opf", opf, false) {
+    Err(_) => panic()
+    Ok(info) => {
+      assert_true(
+        info.metadata.title == "真标题",
+        msg="主标题未被污染",
+      )
+      assert_true(
+        info.metadata.modified == "",
+        msg="外来 meta 不写 modified",
+      )
+      assert_true(
+        info.metadata.rights.length() == 1 &&
+        info.metadata.rights[0] == "合法权利",
+        msg="外来 rights 被忽略",
+      )
+      assert_true(
+        info.metadata.subjects.length() == 1 &&
+        info.metadata.subjects[0] == "合法主题",
+        msg="外来 subject 被忽略",
+      )
+      assert_true(
+        info.manifest.length() == 1,
+        msg="外来 item 不进 manifest，实际：" +
+          info.manifest.length().to_string(),
+      )
+      assert_true(
+        info.spine.length() == 1,
+        msg="外来 itemref 不进 spine，实际：" +
+          info.spine.length().to_string(),
+      )
+      let mut hit = 0
+      for w in info.warnings {
+        if @util.contains(w, "外来命名空间") {
+          hit = hit + 1
+        }
+      }
+      assert_true(
+        hit >= 5,
+        msg="每类外来入口都应有告警，实际：" + hit.to_string(),
+      )
+    }
+  }
+}
+
+///|
+/// 容器层同样按 URI 识别：外来 metadata / manifest / spine 不得冒充标准容器。
+test "OPF 容器元素外来命名空间被忽略" {
+  let opf = @util.join_nl([
+    "<?xml version=\"1.0\"?>", "<package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\" unique-identifier=\"uid\" xmlns:X=\"urn:foreign\">",
+    "  <X:metadata><dc:title xmlns:dc=\"http://purl.org/dc/elements/1.1/\">污染</dc:title></X:metadata>",
+    "  <metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">", "    <dc:identifier id=\"uid\">urn:uuid:moonread-test</dc:identifier>",
+    "    <dc:title>真标题</dc:title>", "    <dc:language>zh</dc:language>", "  </metadata>",
+    "  <X:manifest><X:item id=\"evil\"/></X:manifest>", "  <manifest><item id=\"ch1\" href=\"ch1.xhtml\" media-type=\"application/xhtml+xml\"/></manifest>",
+    "  <X:spine><X:itemref idref=\"evil\"/></X:spine>", "  <spine><itemref idref=\"ch1\"/></spine>",
+    "</package>",
+  ])
+  match @epub.parse_opf("OEBPS/content.opf", opf, false) {
+    Err(_) => panic()
+    Ok(info) => {
+      assert_true(
+        info.metadata.title == "真标题",
+        msg="外来 metadata 未被采用",
+      )
+      assert_true(
+        info.manifest.length() == 1,
+        msg="外来 manifest 未被采用",
+      )
+      assert_true(info.spine.length() == 1, msg="外来 spine 未被采用")
+    }
+  }
+}
+
+///|
+/// 根元素身份同样是 {URI}local name：`x:package` 绑定到外来 URI 时应报错。
+test "OPF 根元素外来命名空间被拒绝" {
+  let opf = "<package xmlns=\"urn:foreign\" version=\"3.0\"/>"
+  match @epub.parse_opf("OEBPS/content.opf", opf, false) {
+    Ok(_) => panic()
+    Err(e) =>
+      assert_true(
+        @util.contains(e, "OPF 命名空间"),
+        msg="应指出根元素命名空间错误：" + e,
+      )
+  }
+}
+
+///|
+/// nav 的 epub:type 前缀也区分大小写：外来 X 绑定 urn:foreign 时
+/// `X:type="toc"` 不算 OPS 语义；合法大小写前缀（O:）仍必须命中。
+test "nav 前缀按大小写原样匹配，外来大写前缀不冒充 OPS" {
+  let nav = @util.join_nl([
+    "<?xml version=\"1.0\"?>", "<html xmlns=\"http://www.w3.org/1999/xhtml\"", "  xmlns:O=\"http://www.idpf.org/2007/ops\" xmlns:X=\"urn:foreign\">",
+    "<body>", "<nav X:type=\"toc\"><ol><li><a href=\"evil.xhtml\">外来</a></li></ol></nav>",
+    "<nav O:type=\"toc\"><ol><li><a href=\"ch1.xhtml\">合法</a></li></ol></nav>",
+    "</body></html>",
+  ])
+  match @epub.parse_nav("OEBPS/nav.xhtml", nav) {
+    Err(_) => panic()
+    Ok((points, _)) => {
+      assert_true(points.length() == 1, msg="只取 OPS 前缀的 nav")
+      assert_true(points[0].path == "OEBPS/ch1.xhtml", msg="合法章节路径")
+    }
+  }
+}
+
+///|
 /// 本轮驳回核心（合法内部参数实体）：EPUB 3.3 §3.9 未禁内部参数实体，
 /// OPF 用 <!ENTITY % name "value"> 声明 + %name; 构造标题应完整解析。
 test "合法内部参数实体标题端到端不丢失" {
@@ -796,4 +918,40 @@ test "合法内部参数实体标题端到端不丢失" {
         msg="参数实体标题：" + info.metadata.title,
       )
   }
+}
+
+///|
+/// 案例 D 的磁盘夹具：外来大写前缀同名入口排在合法 dc:title 之前，
+/// 打开整本 EPUB 后主标题、章节与清单仍取合法入口。
+test "案例 D 夹具：外来命名空间同名入口不污染真实 EPUB" {
+  let b = open_fixture("semantic-namespace-foreign")
+  assert_true(
+    b.metadata.title == "MoonRead 样例",
+    msg="主标题未被外来 title 覆盖",
+  )
+  assert_true(
+    b.metadata.modified == "2026-11-19T00:00:00Z",
+    msg="modified 取合法 meta",
+  )
+  assert_true(b.manifest.length() == 4, msg="外来 item 不进 manifest")
+  assert_true(
+    @epub.chapter_paths(b).length() == 2,
+    msg="外来 itemref 不进阅读顺序",
+  )
+  assert_true(
+    warning_count(b, "外来命名空间") >= 1,
+    msg="忽略外来入口要告警",
+  )
+}
+
+///|
+/// 案例 E 的磁盘夹具：走完整容器 -> fzip -> OPF 链路，
+/// 内部参数实体构造的标题必须保真。
+test "案例 E 夹具：合法内部参数实体在真实 EPUB 中保真" {
+  let b = open_fixture("semantic-param-entity")
+  assert_true(
+    b.metadata.title == "内部实体书名：月亮与六便士",
+    msg="参数实体标题：" + b.metadata.title,
+  )
+  assert_true(@epub.chapter_paths(b).length() == 2, msg="章节不丢失")
 }

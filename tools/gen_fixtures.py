@@ -70,17 +70,32 @@ def opf(title, creator, lang, chapters, epub3, with_nav, with_ncx, with_css,
             f'  <!ENTITY book.lang "{lang}">',
             ']>',
         ]
+    if variant == "param-entity":
+        # 案例 E：合法内部参数实体只在实体值内展开，构造后续实体声明。
+        lines += [
+            '<!DOCTYPE package [',
+            '  <!ENTITY % book.name "月亮与六便士">',
+            '  <!ENTITY book.title "内部实体书名：%book.name;">',
+            ']>',
+        ]
     lang_attr = ' xml:lang="zh-Hant"' if variant == "package-lang" else ""
+    ns_attr = ' xmlns:X="urn:foreign"' if variant == "namespace-foreign" else ""
     lines += [
-        f'<package xmlns="http://www.idpf.org/2007/opf" version="{ver}"{lang_attr} unique-identifier="uid">',
+        f'<package xmlns="http://www.idpf.org/2007/opf" version="{ver}"{lang_attr}{ns_attr} unique-identifier="uid">',
         '  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">',
         '    <dc:identifier id="uid">urn:uuid:moonread-sample</dc:identifier>',
     ]
+    if variant == "namespace-foreign":
+        # 案例 D：外来大写前缀的同名 title 排在合法 dc:title 之前。
+        lines.append('    <X:title>外来污染</X:title>')
     if internal_entities:
         # 合法 EPUB 3.3：标题文本与属性都引用内部实体。
         lines.append(
             '    <dc:title id="title-main" xml:lang="&book.lang;">&book.title;</dc:title>'
         )
+    elif variant == "param-entity":
+        lines.append('    <dc:title>&book.title;</dc:title>')
+        lines.append(f'    <dc:creator>{creator}</dc:creator>')
     elif rich_metadata:
         # EPUB 3.3 合法写法：首个 dc:title 是主标题，其余按 xml:lang 区分；
         # creator 角色用 <meta refines> 表达，不丢插画师/别名/file-as 语义。
@@ -117,6 +132,10 @@ def opf(title, creator, lang, chapters, epub3, with_nav, with_ncx, with_css,
             '    <dc:relation>R</dc:relation><dc:format>application/xhtml+xml</dc:format>',
         ]
     if epub3:
+        if variant == "namespace-foreign":
+            lines.append(
+                '    <X:meta property="dcterms:modified">外来修改时间</X:meta>'
+            )
         lines.append('    <meta property="dcterms:modified">2026-11-19T00:00:00Z</meta>')
     if with_cover or variant == "cover-legacy":
         lines.append('    <meta name="cover" content="cover-img"/>')
@@ -148,6 +167,10 @@ def opf(title, creator, lang, chapters, epub3, with_nav, with_ncx, with_css,
         lines.append(
             '    <item id="svg" href="page.svg" media-type="image/svg+xml"/>'
         )
+    if variant == "namespace-foreign":
+        lines.append(
+            '    <X:item id="evil" href="evil.xhtml" media-type="application/xhtml+xml"/>'
+        )
     if with_ncx:
         lines.append(
             '    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>'
@@ -161,6 +184,8 @@ def opf(title, creator, lang, chapters, epub3, with_nav, with_ncx, with_css,
         lines.append('    <itemref idref="foreign"/>')
     if variant == "svg":
         lines.append('    <itemref idref="svg"/>')
+    if variant == "namespace-foreign":
+        lines.append('    <itemref idref="evil"/>')
     if broken_idref:
         lines.append('    <itemref idref="ghost"/>')
     lines += ["  </spine>", "</package>"]
@@ -273,8 +298,15 @@ def specs():
     add("internal-entities", title="内部实体书名：月亮与六便士", internal_entities=True)
     for variant in ("fallback", "svg", "nav-multivalue", "nav-prefix",
                     "cover-legacy", "package-lang", "multivalue-dc",
-                    "scheme-substring"):
-        add("semantic-" + variant, variant=variant)
+                    "scheme-substring", "namespace-foreign", "param-entity"):
+        if variant == "param-entity":
+            add(
+                "semantic-param-entity",
+                variant=variant,
+                title="内部实体书名：月亮与六便士",
+            )
+        else:
+            add("semantic-" + variant, variant=variant)
     return out
 
 
