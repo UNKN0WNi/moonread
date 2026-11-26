@@ -745,3 +745,55 @@ test "rendition:layout 与 rendition:flow 不再被丢弃" {
     }
   }
 }
+
+///|
+/// 本轮驳回核心（外来命名空间同名入口）：OPF 元数据里 x:title 绑定到外来 URI，
+/// 不得冒充 dc:title 进入 titles / 覆盖主标题；合法 dc:title 仍被解析。
+test "外来命名空间同名 title 不污染 dc 元数据" {
+  let opf = @util.join_nl([
+    "<?xml version=\"1.0\"?>", "<package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\" unique-identifier=\"uid\">",
+    "  <metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\"", "            xmlns:x=\"urn:foreign\">",
+    "    <dc:title>真标题</dc:title>", "    <x:title>外来污染</x:title>",
+    "  </metadata>", "  <manifest/><spine/>", "</package>",
+  ])
+  match @epub.parse_opf("OEBPS/content.opf", opf, false) {
+    Err(_) => panic()
+    Ok(info) => {
+      assert_true(
+        info.metadata.title == "真标题",
+        msg="主标题取合法 dc:title：" + info.metadata.title,
+      )
+      assert_true(
+        info.metadata.titles.length() == 1,
+        msg="外来 title 不计入",
+      )
+      let mut hit = 0
+      for w in info.warnings {
+        if @util.contains(w, "外来命名空间") {
+          hit = hit + 1
+        }
+      }
+      assert_true(hit >= 1, msg="外来同名入口应给告警")
+    }
+  }
+}
+
+///|
+/// 本轮驳回核心（合法内部参数实体）：EPUB 3.3 §3.9 未禁内部参数实体，
+/// OPF 用 <!ENTITY % name "value"> 声明 + %name; 构造标题应完整解析。
+test "合法内部参数实体标题端到端不丢失" {
+  let opf = @util.join_nl([
+    "<?xml version=\"1.0\"?>", "<!DOCTYPE package [", "  <!ENTITY % book.name \"月亮与六便士\">",
+    "  <!ENTITY book.title \"内部实体书名：%book.name;\">", "]>", "<package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\" unique-identifier=\"uid\">",
+    "  <metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">", "    <dc:title>&book.title;</dc:title>",
+    "  </metadata>", "  <manifest/><spine/>", "</package>",
+  ])
+  match @epub.parse_opf("OEBPS/content.opf", opf, false) {
+    Err(_) => panic()
+    Ok(info) =>
+      assert_true(
+        info.metadata.title == "内部实体书名：月亮与六便士",
+        msg="参数实体标题：" + info.metadata.title,
+      )
+  }
+}

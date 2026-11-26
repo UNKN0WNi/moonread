@@ -6,6 +6,16 @@ import {
 }
 
 // Values
+pub const DC_NS : String = "http://purl.org/dc/elements/1.1/"
+
+pub const NCX_NS : String = "http://www.daisy.org/z3986/2005/ncx/"
+
+pub const OPF_NS : String = "http://www.idpf.org/2007/opf"
+
+pub const OPS_NS : String = "http://www.idpf.org/2007/ops"
+
+pub const XHTML_NS : String = "http://www.w3.org/1999/xhtml"
+
 pub fn attr_ci(Element, String) -> String?
 
 pub fn attr_or_empty(Element, String) -> String
@@ -22,6 +32,8 @@ pub fn decode_entities(String, ParseOptions) -> Result[String, String]
 
 pub fn descendants(Element) -> Array[Element]
 
+pub fn element_is(Element, String, String) -> Bool
+
 pub fn find_all_child(Element, String) -> Array[Element]
 
 pub fn find_by_id(Element, String) -> Element?
@@ -36,6 +48,8 @@ pub fn lenient_options() -> ParseOptions
 
 pub fn local_name(String) -> String
 
+pub fn namespace_uri(Element) -> String
+
 pub fn parse_document(String) -> Result[Element, String]
 
 pub fn parse_document_lenient(String) -> Result[Element, String]
@@ -45,6 +59,8 @@ pub fn parse_document_with(String, ParseOptions) -> Result[Element, String]
 pub fn parse_fragment(String, ParseOptions) -> Result[Element, String]
 
 pub fn path_of_first(Element, String) -> String
+
+pub fn prefix_of(String) -> String
 
 pub fn strict_options() -> ParseOptions
 
@@ -62,6 +78,7 @@ pub(all) struct Element {
   tag : String
   attrs : Array[(String, String)]
   children : Array[Node]
+  ns : Array[(String, String)]
 }
 
 #derive(Eq, @debug.Debug)

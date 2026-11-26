@@ -25,6 +25,9 @@ pub(all) struct Element {
   tag : String
   attrs : Array[(String, String)]
   children : Array[Node]
+  /// 该元素作用域内有效的命名空间绑定（prefix -> URI，默认命名空间用 "" 键）。
+  /// 含祖先继承 + 自身 xmlns 声明；用于按 XML Namespaces 判定元素身份。
+  ns : Array[(String, String)]
 }
 
 ///|
@@ -58,6 +61,9 @@ priv struct XP {
   opts : ParseOptions
   /// DOCTYPE 内部子集声明的内部实体：name -> value。外部实体不进表。
   entities : Array[(String, String)]
+  /// 内部参数实体 `<!ENTITY % name "value">`：只在 DTD 内部子集中展开，
+  /// 用于构造其它声明。EPUB 3.3 §3.9 只禁「外部实体声明」，内部参数实体合法。
+  param_entities : Array[(String, String)]
   /// 实体替换递归深度；避免自引用实体无限展开。
   entity_depth : Int32
 }
@@ -85,6 +91,7 @@ pub fn parse_document_with(
     depth: 0,
     opts,
     entities: [],
+    param_entities: [],
     entity_depth: 0,
   }
   match skip_prolog(p) {
@@ -94,7 +101,7 @@ pub fn parse_document_with(
   if p.pos >= p.src.length() {
     return Err("文档为空或只有前言")
   }
-  let root = match parse_element(p) {
+  let root = match parse_element(p, []) {
     Ok(__try_v_1) => __try_v_1
     Err(__try_e_1) => return Err(__try_e_1)
   }
@@ -252,10 +259,16 @@ fn skip_doctype(p : XP) -> Result[Unit, String] {
 }
 
 ///|
-/// 解析 DOCTYPE 内部子集中的实体声明。
-/// 合法 `<!ENTITY name "value">` 收集进 `p.entities`，供文本与属性值展开；
-/// `SYSTEM` / `PUBLIC` 外部实体与参数实体按 EPUB 3.3「XML conformance」
-/// 的 MUST NOT 拒绝，返回清晰错误（不 panic）。
+/// 解析 DOCTYPE 内部子集中的实体声明（EPUB 3.3 §3.9「XML conformance」）。
+///
+/// 规范只禁「internal DTD subset 中的 external entity declaration」，因此：
+/// - `<!ENTITY name "value">` 内部一般实体：收集进 `p.entities`，供文本/属性值展开；
+/// - `<!ENTITY % name "value">` 内部参数实体：合法，收集进 `p.param_entities`，
+///   其值在内部子集内按 `%name;` 展开（用于构造后续声明）；不进入正文实体表；
+/// - 带 `SYSTEM` / `PUBLIC` 外部标识符的（一般或参数）实体：规范 MUST NOT，拒绝。
+///
+/// 一律拒绝参数实体是过度收窄，与「符合 XML Namespaces 1.0 + XML 1.0 文档」
+/// 的兼容终点冲突；合法内部参数实体声明必须按语义接受。
 fn parse_internal_subset(
   p : XP,
   from : Int32,
@@ -270,12 +283,13 @@ fn parse_internal_subset(
       while i < to && @util.is_xml_space(p.src[i]) {
         i = i + 1
       }
-      if i < to && p.src[i] == '%' {
-        return Err(
-          "第 " +
-          decl_start.to_string() +
-          " 个字符处：EPUB 禁止参数实体声明",
-        )
+      // 参数实体声明以 `%` 开头；它本身合法，只有带外部标识符才被禁。
+      let is_param = i < to && p.src[i] == '%'
+      if is_param {
+        i = i + 1
+        while i < to && @util.is_xml_space(p.src[i]) {
+          i = i + 1
+        }
       }
       let name_start = i
       while i < to &&
@@ -315,13 +329,31 @@ fn parse_internal_subset(
         p.pos = saved
         // 保留原始替换文本：XML 规定实体在文本中被引用时，替换文本要
         // 作为标记重新解析；提前展开会把 `&lt;b&gt;` 误变成真正的 <b> 元素。
-        p.entities.push((name, raw))
+        if is_param {
+          // 参数实体值可引用先前声明的参数实体，在内部子集作用域内展开。
+          let resolved = match expand_param_value(p, raw, 0) {
+            Ok(v) => v
+            Err(e) => return Err(e)
+          }
+          p.param_entities.push((name, resolved))
+        } else {
+          // 一般实体的值若含 %param;（DTD 构造常见写法），同样在
+          // 内部子集作用域展开，再保留原文本供正文按标记重解析。
+          let resolved = match expand_param_value(p, raw, 0) {
+            Ok(v) => v
+            Err(e) => return Err(e)
+          }
+          p.entities.push((name, resolved))
+        }
       } else {
-        // SYSTEM / PUBLIC 或其他非引号形式：外部实体，规范禁止
+        // SYSTEM / PUBLIC 或其他非引号形式：外部实体声明，规范禁止
+        // （对参数实体同样适用：<!ENTITY % x SYSTEM "…"> 属 external entity declaration）
         return Err(
           "第 " +
           decl_start.to_string() +
-          " 个字符处：EPUB 禁止外部实体声明 '" +
+          " 个字符处：EPUB 禁止外部实体声明" +
+          (if is_param { "（参数实体）" } else { "" }) +
+          " '" +
           name +
           "'（internal DTD subset 不得含 external entity declaration）",
         )
@@ -331,6 +363,81 @@ fn parse_internal_subset(
     }
   }
   Ok(())
+}
+
+///|
+/// 展开实体声明值中的参数实体引用 `%name;`，深度上限 8。
+/// 只作用于 DTD 内部子集；正文与属性值不经过这里（那里 `%` 是普通字符）。
+fn expand_param_value(
+  p : XP,
+  raw : String,
+  depth : Int32,
+) -> Result[String, String] {
+  if depth > 8 {
+    return Err("参数实体引用嵌套超过 8 层，疑似循环引用")
+  }
+  let cs = @util.to_chars(raw)
+  let out : Array[Char] = []
+  let n = cs.length()
+  let mut i = 0
+  while i < n {
+    if cs[i] != '%' {
+      out.push(cs[i])
+      i = i + 1
+      continue
+    }
+    let mut j = i + 1
+    let name_buf : Array[Char] = []
+    let mut closed = false
+    while j < n && name_buf.length() < 32 {
+      if cs[j] == ';' {
+        closed = true
+        break
+      }
+      if cs[j] == '%' || @util.is_xml_space(cs[j]) {
+        break
+      }
+      name_buf.push(cs[j])
+      j = j + 1
+    }
+    if !closed {
+      // 无 `;` 的 `%` 不是合法参数实体引用，按字面保留
+      out.push('%')
+      i = i + 1
+      continue
+    }
+    let name = @util.from_chars(name_buf)
+    let mut found : String? = None
+    for kv in p.param_entities {
+      if kv.0 == name {
+        found = Some(kv.1)
+        break
+      }
+    }
+    match found {
+      None =>
+        if p.opts.lenient {
+          // 宽松模式保留字面，避免脏 DTD 阻断阅读
+          out.push('%')
+          for ch in name_buf {
+            out.push(ch)
+          }
+          out.push(';')
+        } else {
+          return Err("未声明的参数实体 '%" + name + ";'")
+        }
+      Some(v) =>
+        match expand_param_value(p, v, depth + 1) {
+          Err(e) => return Err(e)
+          Ok(expanded) =>
+            for ch in @util.to_chars(expanded) {
+              out.push(ch)
+            }
+        }
+    }
+    i = j + 1
+  }
+  Ok(@util.from_chars(out))
 }
 
 ///|
@@ -390,7 +497,11 @@ fn is_name_char(c : Char) -> Bool {
 }
 
 ///|
-fn parse_element(p : XP) -> Result[Element, String] {
+/// `ns` 为祖先作用域内已生效的 xmlns 绑定；本元素声明的 xmlns 会覆盖同名前缀。
+fn parse_element(
+  p : XP,
+  ns : Array[(String, String)],
+) -> Result[Element, String] {
   // XML 1.0 没有层级上限；HTML5 的实现建议 512。合法深层文档不能因
   // 内核自设的 96 层上限被误拒，因此对齐到 512 并保留构造输入防线。
   if p.depth > 512 {
@@ -465,8 +576,11 @@ fn parse_element(p : XP) -> Result[Element, String] {
       }
     }
   }
+  // XML Namespaces 1.0：本元素声明的 xmlns 覆盖祖先同名前缀。
+  // `xmlns="URI"` 写默认命名空间（键 ""），`xmlns:p="URI"` 写前缀 p。
+  let scope = merge_ns_scope(ns, attrs)
   if self_closed {
-    return Ok(Element::{ tag, attrs, children: [], })
+    return Ok(Element::{ tag, attrs, children: [], ns: scope, })
   }
   if is_void_tag(tag, p.opts) {
     // XHTML 允许 `<meta/>`，但 EPUB 里也常见 `<meta>...</meta>`；
@@ -479,16 +593,57 @@ fn parse_element(p : XP) -> Result[Element, String] {
     } else {
       p.pos = saved
     }
-    return Ok(Element::{ tag, attrs, children: [], })
+    return Ok(Element::{ tag, attrs, children: [], ns: scope, })
   }
   p.depth = p.depth + 1
   let children : Array[Node] = []
-  let closed = parse_children(p, tag, children)
+  let closed = parse_children(p, tag, children, scope)
   p.depth = p.depth - 1
   match closed {
     Err(e) => return Err(e)
-    Ok(_) => Ok(Element::{ tag, attrs, children, })
+    Ok(_) => Ok(Element::{ tag, attrs, children, ns: scope, })
   }
+}
+
+///|
+/// 把当前元素上的 xmlns 声明合并进祖先作用域；同名前缀后者覆盖前者。
+fn merge_ns_scope(
+  parent : Array[(String, String)],
+  attrs : Array[(String, String)],
+) -> Array[(String, String)] {
+  let out : Array[(String, String)] = []
+  for kv in parent {
+    out.push(kv)
+  }
+  for kv in attrs {
+    let key = @util.ascii_lower(kv.0)
+    if key == "xmlns" {
+      set_ns(out, "", kv.1)
+    } else if @util.starts_with(key, "xmlns:") {
+      let prefix = @util.slice_string(key, 6, @util.to_chars(key).length())
+      set_ns(out, prefix, kv.1)
+    }
+  }
+  out
+}
+
+///|
+/// 作用域内按前缀覆盖式写入绑定。
+fn set_ns(
+  scope : Array[(String, String)],
+  prefix : String,
+  uri : String,
+) -> Unit {
+  let n = scope.length()
+  let mut i = 0
+  while i < n {
+    if scope[i].0 == prefix {
+      scope[i] = (prefix, uri)
+      return
+    }
+    i = i + 1
+  }
+  scope.push((prefix, uri))
 }
 
 ///|
@@ -517,6 +672,7 @@ fn parse_children(
   p : XP,
   open_tag : String,
   out : Array[Node],
+  ns : Array[(String, String)],
 ) -> Result[Unit, String] {
   let n = p.src.length()
   while true {
@@ -594,7 +750,7 @@ fn parse_children(
           Ok(_) => ()
         }
       } else {
-        let child = match parse_element(p) {
+        let child = match parse_element(p, ns) {
           Ok(__try_v_7) => __try_v_7
           Err(__try_e_7) => return Err(__try_e_7)
         }
@@ -606,7 +762,7 @@ fn parse_children(
         p.pos = p.pos + 1
       }
       let raw = @util.from_chars(@util.slice_chars(p.src, start, p.pos))
-      let nodes = match decode_text_nodes(p, raw) {
+      let nodes = match decode_text_nodes(p, raw, ns) {
         Ok(__try_v_8) => __try_v_8
         Err(__try_e_8) => return Err(__try_e_8)
       }
@@ -711,7 +867,11 @@ fn append_text_node(out : Array[Node], buf : Array[Char]) -> Unit {
 ///|
 /// 正文中的实体引用：内部实体的替换文本必须作为标记重新解析。
 /// 这正是 XML 1.0 §4.4.5 与 expat 的行为；属性值仍走 `decode_entities_in`。
-fn decode_text_nodes(p : XP, raw : String) -> Result[Array[Node], String] {
+fn decode_text_nodes(
+  p : XP,
+  raw : String,
+  ns : Array[(String, String)],
+) -> Result[Array[Node], String] {
   let cs = @util.to_chars(raw)
   let out : Array[Node] = []
   let mut buf : Array[Char] = []
@@ -763,9 +923,10 @@ fn decode_text_nodes(p : XP, raw : String) -> Result[Array[Node], String] {
               depth: p.depth,
               opts: p.opts,
               entities: p.entities,
+              param_entities: p.param_entities,
               entity_depth: p.entity_depth + 1,
             }
-            let el = match parse_element(sub) {
+            let el = match parse_element(sub, ns) {
               Ok(__try_v_9) => __try_v_9
               Err(__try_e_9) =>
                 return Err(
@@ -999,6 +1160,84 @@ fn is_xml_char(cp : Int32) -> Bool {
 }
 
 // ---------------- 访问器 ----------------
+
+// ---------------- 命名空间（XML Namespaces 1.0） ----------------
+//
+// EPUB 3.3 §3.9 要求所有 XML 媒体类型都是符合 XML Namespaces 1.0 的文档。
+// 元素身份 = {命名空间 URI} + local name，不是「裸 local name」。
+// 标准词汇（dc:title、opf:item、epub:type…）必须核对前缀绑定的 URI；
+// 外来命名空间里恰好同名的入口（如 <x:title xmlns:x="urn:foreign">）
+// 不得被当成标准词汇，否则会把外来文档语义错误地塞进元数据。
+
+///|
+/// OPF / package 文档命名空间。
+pub const OPF_NS : String = "http://www.idpf.org/2007/opf"
+
+///|
+/// Dublin Core 元素命名空间。
+pub const DC_NS : String = "http://purl.org/dc/elements/1.1/"
+
+///|
+/// EPUB 3 语义词汇表命名空间（epub:type）。
+pub const OPS_NS : String = "http://www.idpf.org/2007/ops"
+
+///|
+/// NCX 命名空间（EPUB 2）。
+pub const NCX_NS : String = "http://www.daisy.org/z3986/2005/ncx/"
+
+///|
+/// XHTML 命名空间（EPUB 3 内容文档）。
+pub const XHTML_NS : String = "http://www.w3.org/1999/xhtml"
+
+///|
+/// 取限定名的前缀部分：`dc:title` -> `"dc"`；无前缀返回 `""`。
+pub fn prefix_of(tag : String) -> String {
+  let parts = @util.split_char(tag, ':')
+  if parts.length() >= 2 {
+    parts[0]
+  } else {
+    ""
+  }
+}
+
+///|
+/// 元素按其前缀在作用域内解析出的命名空间 URI；无前缀元素用默认命名空间。
+/// 未声明的前缀返回空串（调用方据此判定为外来/未知命名空间）。
+pub fn namespace_uri(el : Element) -> String {
+  let prefix = prefix_of(el.tag)
+  match ns_lookup(el.ns, prefix) {
+    Some(uri) => uri
+    None => ""
+  }
+}
+
+///|
+fn ns_lookup(scope : Array[(String, String)], prefix : String) -> String? {
+  for kv in scope {
+    if kv.0 == prefix {
+      return Some(kv.1)
+    }
+  }
+  None
+}
+
+///|
+/// 按 XML Namespaces 的元素身份判定标准词汇。
+/// - local name 必须相等（ASCII 大小写无关）；
+/// - 元素前缀解析出的 URI：为空（历史语料未声明命名空间）时按 local name 兼容命中；
+///   非空时必须精确等于 `want_uri`——因此外来命名空间的同名入口
+///   （如 `<x:title xmlns:x="urn:foreign">`）不会冒充 `dc:title`。
+/// `want_uri` 传空串表示只按 local name 判定（宽松入口）。
+pub fn element_is(el : Element, want_local : String, want_uri : String) -> Bool {
+  if @util.ascii_lower(local_name(el.tag)) != @util.ascii_lower(want_local) {
+    return false
+  }
+  let uri = namespace_uri(el)
+  if want_uri.length() == 0 || uri.length() == 0 {
+    return true
+  }
+  uri == want_uri
+}
 
 ///|
 /// 去掉命名空间前缀，`opf:scheme` -> `scheme`。

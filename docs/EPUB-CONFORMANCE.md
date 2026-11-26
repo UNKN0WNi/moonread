@@ -17,24 +17,30 @@
 
 ### 1.1 为什么内部叫「XML 子集」
 
-解析器 `src/xml/xml.mbt` 处理的是 **EPUB 实际使用的 XML 1.0 良构子集**，不是自创格式。实体与命名空间的处理严格遵循 EPUB 3.3「XML conformance」条款，条款原文：
+解析器 `src/xml/xml.mbt` 处理的是 **EPUB 实际使用的 XML 1.0 + XML Namespaces 1.0 子集**，不是自创格式。EPUB 3.3「XML conformance」条款原文：
 
-> Any publication resource that is an XML-based media type … MAY only specify a document type declaration that references an external identifier appropriate for its media type — or that omits external identifiers. **MUST NOT contain external entity declarations in the internal DTD subset.**
+> Any publication resource that is an XML-based media type … MUST be a conformant XML 1.0 Document as defined in Conformance of Documents **[XML Namespaces]** … MAY only specify a document type declaration that references an external identifier appropriate for its media type — or that omits external identifiers … **MUST NOT contain external entity declarations in the internal DTD subset.**
 
-据此，实体支持终点精确划分为：
+这里有三个必须同时满足的事实，构成本项目**符合标准的 XML/容器处理终点**：
+
+1. **命名空间是元素身份的一部分**：EPUB 3.3 规范性引用 XML Namespaces 1.0，元素身份 = `{命名空间 URI}local name`，不是裸 local name。标准词汇（`dc:title`、`opf:item`、`epub:type`）必须按前缀绑定的 URI 识别，外来命名空间的同名入口不得冒充。
+2. **禁令只针对外部实体声明**：条款「MUST NOT」的宾语是 *external entity declarations in the internal DTD subset*，不覆盖内部一般实体，也不覆盖合法内部参数实体。
+3. **外部标识符可出现但不加载**：DOCTYPE 可引用允许的外部标识符或不带标识符，内核不解析外部 DTD。
+
+据此，实体与命名空间的终点精确划分为：
 
 | 实体/语法类别 | 是否支持 | 依据 |
 |---|---|---|
 | 五个预定义实体（`lt/gt/amp/quot/apos`）+ 数字引用（十进制/十六进制） | ✅ 全部展开 | XML 1.0 预定义 |
 | **DOCTYPE 内部子集声明的内部实体** `<!ENTITY name "value">` | ✅ 文本中替换值按标记重新解析（可产生元素），属性值按字符串展开；值可再含实体引用（递归，深度上限 8） | 规范未禁止，属合法 EPUB 输入；XML 1.0 §4.4.5 |
+| **合法内部参数实体** `<!ENTITY % name "value">` | ✅ 接受声明；值在内部子集内按 `%name;` 展开，用于构造后续实体声明；不进入正文实体表 | EPUB 3.3 未禁止内部参数实体声明；XML 1.0 §4.4.8 |
 | `DOCTYPE` 外部标识符（`PUBLIC`/`SYSTEM` 的 DTD 引用） | ✅ 允许出现在前言；不加载外部 DTD | 规范条款明确 MAY |
-| **外部实体声明** `<!ENTITY x SYSTEM "…">` / `PUBLIC "…" "…"` | ❌ 拒绝并给清晰错误 | 规范 MUST NOT（XXE 防线） |
-| 参数实体 `<!ENTITY % …>` | ❌ 拒绝 | EPUB 阅读内核无此需求，且多为外部用途 |
-| 命名空间 URI 归一化 | ❌ 不做；前缀原样保留，用 `local_name` 去前缀比较 | EPUB 只要求按 local name 识别 |
+| **外部实体声明**（一般或参数）`<!ENTITY x SYSTEM "…">` / `PUBLIC "…" "…"`、`<!ENTITY % x SYSTEM "…">` | ❌ 拒绝并给清晰错误 | 规范 MUST NOT（XXE 防线） |
+| **命名空间识别** | ✅ 按 `{URI}local name`：前缀从作用域 `xmlns` 绑定解析；URI 为空的历史语料按 local name 兼容；URI 非空且不匹配标准词汇时判为外来入口并忽略 | XML Namespaces 1.0 + EPUB 3.3 §1.6 / §3.9 |
 
 `lenient` 模式覆盖真实书的常见脏写法（未闭合的 HTML 空元素、大小写不一致的结束标签、**未声明实体按字面保留**）——但**不放宽**外部实体禁令，安全约束在两种模式下一致。
 
-这个划分直接回应了「合法文档语义不丢失」：内部实体是合法输入的一部分，之前把「自定义 DTD 实体」整体排除是过度收窄，现已改为精确支持内部实体、只拒绝规范明令禁止的外部实体。
+本划分回应了「合法文档语义不丢失」：内部实体与内部参数实体都是合法输入，之前把「参数实体」整体排除、把命名空间降格为「按 local name 比较」都是过度收窄，与所声明的 EPUB 3.3 终点冲突。现改为精确支持合法内部实体/参数实体与按 URI 的命名空间识别，只拒绝规范明令禁止的外部实体声明和外来命名空间同名入口。两类边界的合法输入与预期结果见 §2.9。
 
 ## 2. 规范条款 → 实现 → 断言
 
@@ -143,25 +149,28 @@
 
 **案例 B：命名空间处理行为**
 
-上例的 `<dc:title>` 带命名空间前缀 `dc:`，属性 `xml:lang` 带 `xml:`。解析行为：
+上例的 `<dc:title>` 带命名空间前缀 `dc:`，属性 `xml:lang` 带 `xml:`。解析行为（详见 §2.9 与 XML Namespaces 1.0）：
 
 - 标签原样保留为 `dc:title`，属性值按实体规则展开；
-- 访问器 `local_name("dc:title") == "title"`，故上层 `find_child(root, "title")` 可按 local name 命中——**不依赖命名空间 URI 归一化**；
+- 解析时把作用域内 `xmlns` 绑定存到每个 `Element.ns`：`xmlns:dc="http://purl.org/dc/elements/1.1/"` 使 `dc` 绑定到 DC URI；
+- 标准词汇用 `element_is(el, "title", DC_NS)` 判定——local name 相等**且**前缀绑定 URI 等于 DC URI；外来命名空间同名入口（如 `<x:title xmlns:x="urn:foreign">`）不算；
+- 未声明命名空间的历史语料（URI 为空）按 local name 兼容命中，不破坏既有书库；
 - `xml:lang` 经属性查找的 `local_name` 去前缀后读取（传 `"lang"`），语义不丢失；
 - 内部实体展开发生在命名空间元素/属性**内部**，前缀与实体处理互不干扰。
 
-对应 XML 层断言：`命名空间前缀处理`、`DOCTYPE 内部实体：标题与属性按语义展开`。
+对应 XML 层断言：`命名空间：外来同名入口不命中标准词汇`、`命名空间：前缀绑定沿作用域继承`、`命名空间：未声明前缀保持 local name 兼容`、`DOCTYPE 内部实体：标题与属性按语义展开`。
 
-**案例 C：外部实体与参数实体被拒绝（安全终点）**
+**案例 C：外部实体被拒绝、合法内部参数实体被接受（安全终点）**
 
 | 合法输入？ | 输入片段 | 预期结果 |
 |---|---|---|
 | ❌ 违规 | `<!ENTITY xxe SYSTEM "file:///etc/passwd">` | `Err("…EPUB 禁止外部实体声明…")`，strict 与 lenient 一致 |
 | ❌ 违规 | `<!ENTITY xxe PUBLIC "-//EVIL//DTD" "http://evil/x.dtd">` | 同上 |
-| ❌ 违规 | `<!ENTITY % ext SYSTEM "http://evil/x.dtd">` | `Err("…EPUB 禁止参数实体声明")` |
+| ❌ 违规 | `<!ENTITY % ext SYSTEM "http://evil/x.dtd">` | `Err("…EPUB 禁止外部实体声明（参数实体）…")`（外部标识符才是禁令对象） |
 | ✅ 合法 | `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "…/xhtml11.dtd">` | 正常解析，不加载外部 DTD |
+| ✅ 合法 | `<!ENTITY % book.name "月亮与六便士"><!ENTITY title "书名：%book.name;">` | 参数实体值在内部子集展开，`&title;` 得到 `书名：月亮与六便士`（见 §2.9） |
 
-断言：`DOCTYPE 外部实体：按 EPUB 规范拒绝`、`DOCTYPE 参数实体与循环引用被拒绝`、`DOCTYPE 外部标识符仍可解析`。
+断言：`DOCTYPE 外部参数实体与循环引用被拒绝`、`合法内部参数实体声明按语义展开`、`合法内部参数实体独立声明不影响文档解析`、`DOCTYPE 外部标识符仍可解析`。
 
 实现位置：`src/xml/xml.mbt` 的 `skip_doctype` / `parse_internal_subset` / `decode_text_nodes` / `decode_entities_in` / `resolve_entity`；端到端断言在 `src/epub/epub_test.mbt`。磁盘夹具 `internal-entities.epub` 与内存 fixture 成对生成，直接进入 27 本内核对账。
 
@@ -198,6 +207,60 @@
 
 另外，`mimetype` 的 STORED 压缩方式仍无法校验：当前 `Archive` 模型不记录 ZIP 压缩方法，属只读场景的检测缺口，不影响语义保真。
 
+## 2.9 本轮驳回收口：命名空间终点与内部参数实体（2026-11-26）
+
+审核指出：附件声明的「按 local name 比较、不做 URI 归一化」与「参数实体一律拒绝」和所声明的 EPUB 3.3 兼容终点冲突，不能支撑「合法文档语义不丢失」。本轮按规范原文修正终点，并用两组合法输入说明预期解析结果。
+
+**终点修正（对照 §1.1）**：
+
+| 旧声明（冲突） | 新终点（符合标准） | 规范依据 |
+|---|---|---|
+| 命名空间不归一化，只按 local name 比较 | 元素身份 = `{URI}local name`；标准词汇按前缀绑定的 URI 识别；外来命名空间同名入口忽略 | EPUB 3.3 §3.9 规范性引用 XML Namespaces 1.0；§1.6 保留前缀 |
+| 参数实体 `<!ENTITY % …>` 一律拒绝 | 合法**内部**参数实体接受并在内部子集展开；带 SYSTEM/PUBLIC **外部标识符**的参数实体才拒绝 | EPUB 3.3 §3.9 的 MUST NOT 宾语是「external entity declarations in the internal DTD subset」，不含内部参数实体 |
+
+**案例 D：外来命名空间同名入口（合法输入 → 预期解析结果）**
+
+合法输入（OPF 元数据，两个元素 local name 都是 `title`）：
+
+```xml
+<metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:x="urn:foreign">
+  <dc:title>真标题</dc:title>
+  <x:title>外来污染</x:title>
+</metadata>
+```
+
+预期解析结果：
+
+| 字段 | 期望值 | 说明 |
+|---|---|---|
+| `metadata.title` | `真标题` | 只取 DC 命名空间的首个 `dc:title` |
+| `metadata.titles.length()` | `1` | `x:title` 不是 DC 词汇，不计入 |
+| `warnings` | 含一条「忽略外来命名空间的 dc 同名入口」 | 明确告知外来入口被忽略，不静默 |
+
+未声明命名空间的旧语料 `<metadata><title>兼容</title></metadata>` 仍按 local name 命中（`namespace_uri` 为空即兼容），不破坏既有书库。断言：`外来命名空间同名 title 不污染 dc 元数据`、`命名空间：外来同名入口不命中标准词汇`、`命名空间：前缀绑定沿作用域继承`、`命名空间：未声明前缀保持 local name 兼容`。
+
+**案例 E：合法内部参数实体声明（合法输入 → 预期解析结果）**
+
+合法输入（DOCTYPE 内部子集；XML 1.0 §4.4.8 允许）：
+
+```xml
+<!DOCTYPE package [
+  <!ENTITY % book.name "月亮与六便士">
+  <!ENTITY book.title "内部实体书名：%book.name;">
+]>
+<package …><metadata …><dc:title>&book.title;</dc:title></metadata>…</package>
+```
+
+预期解析结果：
+
+| 字段 | 期望值 | 说明 |
+|---|---|---|
+| `%book.name;` | 在内部子集展开为 `月亮与六便士` | 参数实体只在 DTD 内部子集生效，不进入正文实体表 |
+| `metadata.title` | `内部实体书名：月亮与六便士` | 一般实体 `book.title` 的值中 `%book.name;` 先展开，正文 `&book.title;` 得到完整标题 |
+| 非法 `<!ENTITY % ext SYSTEM "…">` | `Err("…禁止外部实体声明（参数实体）…")` | 外部标识符才是 EPUB 禁令对象，strict/lenient 一致 |
+
+实现位置：`src/xml/xml.mbt` 的 `XP.param_entities` / `parse_internal_subset` / `expand_param_value`；命名空间在 `merge_ns_scope` / `Element.ns` / `element_is` / `namespace_uri`，EPUB 层守卫在 `src/epub/parse.mbt` 的 `foreign_ns` / `dc_vocabulary`。
+
 ## 3. 可复现的验证命令
 
 ```bash
@@ -208,7 +271,7 @@ bash scripts/ci.sh
 python3 tools/corpus_check.py --require-manifest --require-probe
 ```
 
-当前结果：四端各 150 项测试通过；跨端输出一致；27 本 EPUB（25 自建 + 2 第三方公版）内核对账全部通过；`moon prove` 在 CI 的 Linux 任务中由 SMT 求解器验证。
+当前结果：四端各 157 项测试通过；跨端输出一致；27 本 EPUB（25 自建 + 2 第三方公版）内核对账全部通过；`moon prove` 在 CI 的 Linux 任务中由 SMT 求解器验证。
 
 ## 4. 语料来源
 

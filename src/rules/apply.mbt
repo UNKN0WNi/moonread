@@ -304,7 +304,12 @@ fn rebuild(
       }
     }
   }
-  let mut out = @xml.Element::{ tag: el.tag, attrs: el.attrs, children, }
+  let mut out = @xml.Element::{
+    tag: el.tag,
+    attrs: el.attrs,
+    children,
+    ns: el.ns,
+  }
   // 2) 再对本元素施加规则（顺序即 的数组顺序）
   if my_path.length() > 0 {
     for r in set.rules {
@@ -413,7 +418,7 @@ pub fn set_attr(
   if !replaced {
     attrs.push((name, value))
   }
-  @xml.Element::{ tag: el.tag, attrs, children: el.children, }
+  @xml.Element::{ tag: el.tag, attrs, children: el.children, ns: el.ns, }
 }
 
 ///|
@@ -446,7 +451,7 @@ pub fn merge_style(
   if !replaced {
     attrs.push(("style", merged))
   }
-  @xml.Element::{ tag: el.tag, attrs, children: el.children, }
+  @xml.Element::{ tag: el.tag, attrs, children: el.children, ns: el.ns, }
 }
 
 ///|
@@ -490,7 +495,7 @@ fn replace_in_subtree(
         children.push(@xml.EElement(replace_in_subtree(e, find, repl)))
     }
   }
-  @xml.Element::{ tag: el.tag, attrs: el.attrs, children, }
+  @xml.Element::{ tag: el.tag, attrs: el.attrs, children, ns: el.ns, }
 }
 
 ///|

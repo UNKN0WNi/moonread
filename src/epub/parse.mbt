@@ -159,21 +159,21 @@ pub fn parse_opf(
           warnings.push(
             "OPF 缺少 metadata 元素，元数据全部按空处理",
           )
-          @xml.Element::{ tag: "metadata", attrs: [], children: [], }
+          @xml.Element::{ tag: "metadata", attrs: [], children: [], ns: [], }
         }
         Some(m) => m
       }
       let manifest_el = match @xml.find_child(root, "manifest") {
         None => {
           warnings.push("OPF 缺少 manifest 元素")
-          @xml.Element::{ tag: "manifest", attrs: [], children: [], }
+          @xml.Element::{ tag: "manifest", attrs: [], children: [], ns: [], }
         }
         Some(m) => m
       }
       let spine_el = match @xml.find_child(root, "spine") {
         None => {
           warnings.push("OPF 缺少 spine 元素，章节顺序为空")
-          @xml.Element::{ tag: "spine", attrs: [], children: [], }
+          @xml.Element::{ tag: "spine", attrs: [], children: [], ns: [], }
         }
         Some(s) => s
       }
@@ -235,6 +235,32 @@ fn refines_role(md : Metadata, target : String) -> String {
 }
 
 ///|
+/// 哪些 local name 属于 Dublin Core 词汇表（须在 DC 命名空间下识别）。
+fn dc_vocabulary(name : String) -> Bool {
+  name == "title" ||
+  name == "creator" ||
+  name == "contributor" ||
+  name == "language" ||
+  name == "identifier" ||
+  name == "publisher" ||
+  name == "date" ||
+  name == "description" ||
+  name == "source" ||
+  name == "type" ||
+  name == "coverage" ||
+  name == "relation" ||
+  name == "format"
+}
+
+///|
+/// 元素是否绑定到外来命名空间：前缀解析出了 URI 且不等于期望 URI。
+/// 未声明命名空间（URI 为空）的历史语料返回 false，保持兼容。
+fn foreign_ns(el : @xml.Element, want_uri : String) -> Bool {
+  let uri = @xml.namespace_uri(el)
+  uri.length() > 0 && uri != want_uri
+}
+
+///|
 fn parse_metadata(
   opf_path : String,
   el : @xml.Element,
@@ -249,6 +275,13 @@ fn parse_metadata(
   // 因此必须先把修饰关系建好，再解析 dc: 元素时回填（如 creator 的 role）。
   for c in @xml.child_elements(el) {
     if @util.ascii_lower(@xml.local_name(c.tag)) != "meta" {
+      continue
+    }
+    // XML Namespaces：外来命名空间里恰好叫 meta 的入口不得修饰标准元数据
+    if foreign_ns(c, @xml.OPF_NS) {
+      warnings.push(
+        "忽略外来命名空间的 meta 同名入口 '" + c.tag + "'",
+      )
       continue
     }
     let ref_raw = @util.trim(@xml.attr_or_empty(c, "refines"))
@@ -271,6 +304,15 @@ fn parse_metadata(
   // `default_lang` 由 parse_opf 从 package/@xml:lang 取得（见 §5.3.7）。
   for c in @xml.child_elements(el) {
     let name = @util.ascii_lower(@xml.local_name(c.tag))
+    // Dublin Core 词汇只在 DC 命名空间下生效（未声明前缀的历史语料兼容）。
+    // 外来命名空间的同名入口（如 <x:title xmlns:x="urn:foreign">）不得
+    // 冒充标准元数据，否则「合法文档语义不丢失」会被外来内容污染。
+    if dc_vocabulary(name) && foreign_ns(c, @xml.DC_NS) {
+      warnings.push(
+        "忽略外来命名空间的 dc 同名入口 '" + c.tag + "'",
+      )
+      continue
+    }
     if name == "title" {
       let value = @util.trim(@xml.text_content(c))
       let lang = @util.trim(@xml.attr_or_empty(c, "lang"))

@@ -526,8 +526,9 @@ test "DOCTYPE 外部实体：按 EPUB 规范拒绝" {
 }
 
 ///|
-/// 参数实体与循环引用都要在解析阶段挡住，不 panic。
-test "DOCTYPE 参数实体与循环引用被拒绝" {
+/// EPUB 3.3 §3.9 只禁 external entity declaration：带 SYSTEM/PUBLIC 的
+/// 参数实体属于外部实体，必须拒绝；一般实体的循环引用也要挡住，不 panic。
+test "DOCTYPE 外部参数实体与循环引用被拒绝" {
   let param = @util.join_nl([
     "<!DOCTYPE a [", "  <!ENTITY % ext SYSTEM \"http://evil.example/x.dtd\">", "]>",
     "<a/>",
@@ -536,13 +537,48 @@ test "DOCTYPE 参数实体与循环引用被拒绝" {
     "<!DOCTYPE a [", "  <!ENTITY loop \"&loop;\">", "]>", "<a>&loop;</a>",
   ])
   assert_true(
-    doc_err_text(param).contains("禁止参数实体声明"),
-    msg="参数实体应报错",
+    doc_err_text(param).contains("禁止外部实体声明"),
+    msg="外部参数实体应报错：" + doc_err_text(param),
+  )
+  assert_true(
+    doc_err_text(param).contains("参数实体"),
+    msg="应标明是参数实体：" + doc_err_text(param),
   )
   // 自引用实体在替换时按深度上限拒绝，不死循环、不 panic
   assert_true(
     doc_err_text(cyclic).length() > 0,
     msg="循环实体应被拒绝：" + doc_err_text(cyclic),
+  )
+}
+
+///|
+/// 合法内部参数实体（EPUB 3.3 未禁止）：`<!ENTITY % name "value">`
+/// 应被接受，其值在内部子集里按 `%name;` 展开，用于构造后续一般实体。
+/// 这是「明确标准兼容终点」的核心回归。
+test "合法内部参数实体声明按语义展开" {
+  let xml = @util.join_nl([
+    "<!DOCTYPE a [", "  <!ENTITY % book.title \"月亮与六便士\">", "  <!ENTITY title \"书名：%book.title;\">",
+    "]>", "<a>&title;</a>",
+  ])
+  match @xml.parse_document(xml) {
+    Err(_) => panic()
+    Ok(root) =>
+      assert_true(
+        @xml.text_content(root) == "书名：月亮与六便士",
+        msg="参数实体展开结果：" + @xml.text_content(root),
+      )
+  }
+}
+
+///|
+/// 内部参数实体也可以直接出现（`%` 值不进入正文实体表），且不误伤一般实体。
+test "内部参数实体独立声明不影响文档解析" {
+  let xml = @util.join_nl([
+    "<!DOCTYPE a [", "  <!ENTITY % unused \"片段\">", "]>", "<a>正文</a>",
+  ])
+  assert_true(
+    doc_ok(xml),
+    msg="含合法内部参数实体的文档应正常解析",
   )
 }
 
@@ -629,6 +665,74 @@ test "find_by_id 不混用 xml:id 与 id" {
         None => panic()
         Some(el) =>
           assert_true(el.tag == "b", msg="只命中无前缀的 id：" + el.tag)
+      }
+  }
+}
+
+///|
+/// XML Namespaces 1.0：元素身份 = {URI}local name。外来命名空间同名入口
+/// （<x:title> 绑定到 non-DC URI）不得被 element_is 判定为 dc:title。
+test "命名空间：外来同名入口不命中标准词汇" {
+  let xml = @util.join_nl([
+    "<metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\"", " xmlns:x=\"urn:foreign\">",
+    "  <dc:title>合法</dc:title>", "  <x:title>外来</x:title>", "</metadata>",
+  ])
+  match @xml.parse_document(xml) {
+    Err(_) => panic()
+    Ok(root) => {
+      let kids = @xml.child_elements(root)
+      assert_true(kids.length() == 2, msg="两个同名子元素")
+      assert_true(
+        @xml.element_is(kids[0], "title", @xml.DC_NS),
+        msg="dc:title 命中 DC 命名空间",
+      )
+      assert_true(
+        !@xml.element_is(kids[1], "title", @xml.DC_NS),
+        msg="x:title(urn:foreign) 不冒充 dc:title",
+      )
+      assert_true(
+        @xml.namespace_uri(kids[1]) == "urn:foreign",
+        msg="前缀按作用域解析：" + @xml.namespace_uri(kids[1]),
+      )
+    }
+  }
+}
+
+///|
+/// 作用域继承：子元素未重复声明前缀时，沿用祖先的 xmlns 绑定。
+test "命名空间：前缀绑定沿作用域继承" {
+  let xml = @util.join_nl([
+    "<package xmlns:dc=\"http://purl.org/dc/elements/1.1/\">", "  <metadata><dc:title>继承</dc:title></metadata>",
+    "</package>",
+  ])
+  match @xml.parse_document(xml) {
+    Err(_) => panic()
+    Ok(root) =>
+      match @xml.find_descendant(root, "title") {
+        None => panic()
+        Some(t) =>
+          assert_true(
+            @xml.element_is(t, "title", @xml.DC_NS),
+            msg="祖先绑定的 dc 前缀在后代仍有效",
+          )
+      }
+  }
+}
+
+///|
+/// 未声明命名空间的历史语料保持兼容：URI 为空时按 local name 命中。
+test "命名空间：未声明前缀保持 local name 兼容" {
+  let xml = "<metadata><title>兼容</title></metadata>"
+  match @xml.parse_document(xml) {
+    Err(_) => panic()
+    Ok(root) =>
+      match @xml.find_child(root, "title") {
+        None => panic()
+        Some(t) =>
+          assert_true(
+            @xml.element_is(t, "title", @xml.DC_NS),
+            msg="无命名空间声明时按 local name 命中",
+          )
       }
   }
 }
